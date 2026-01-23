@@ -1,6 +1,6 @@
 import sqlite3
 import hashlib
-import os
+
 
 DATABASE_PATH = "mockmarket.db"
 
@@ -38,12 +38,12 @@ def create_user(username: str, password: str) -> tuple[bool, str]:
     """
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     try:
         password_hash = hash_password(password)
         cursor.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, password_hash)
+            (username, password_hash),
         )
         conn.commit()
         return True, "Account created successfully!"
@@ -60,17 +60,14 @@ def verify_user(username: str, password: str) -> tuple[bool, str]:
     """
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute(
-        "SELECT password_hash FROM users WHERE username = ?",
-        (username,)
-    )
+
+    cursor.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
     result = cursor.fetchone()
     conn.close()
-    
+
     if result is None:
         return False, "Username not found."
-    
+
     password_hash = hash_password(password)
     if result[0] == password_hash:
         return True, "Login successful!"

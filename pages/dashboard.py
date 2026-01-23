@@ -8,7 +8,9 @@ if "logged_in" not in st.session_state or not st.session_state.logged_in:
 else:
     st.header(f"Hello, {st.session_state.username}! 👋")
     st.write("Welcome to your MockMarket dashboard.")
-
+    st.write(
+        "Congratulations on successfully logging in! You get $10,000 in virtual cash to start trading."
+    )
     st.divider()
 
     if st.button("Log Out"):
