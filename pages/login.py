@@ -10,7 +10,7 @@ if "logged_in" not in st.session_state:
 
 # Redirect if already logged in
 if st.session_state.logged_in:
-    st.switch_page("pages/dashboard.py")
+    st.rerun()
 
 with st.form("login_form"):
     username = st.text_input("Username")
@@ -26,7 +26,7 @@ with st.form("login_form"):
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.success(message)
-                st.switch_page("pages/dashboard.py")
+                st.rerun()
             else:
                 st.error(message)
 

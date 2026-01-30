@@ -19,7 +19,10 @@ with st.form("signup_form"):
             success, message = create_user(username, password)
             if success:
                 st.success(message)
-                st.info("Please go to the Login page to sign in.")
+                # Automatically log in the user
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.rerun()
             else:
                 st.error(message)
 
