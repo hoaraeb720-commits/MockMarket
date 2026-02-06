@@ -6,6 +6,8 @@ import pandas as pd
 
 st.set_page_config(layout="wide")
 
+st.session_state.wallet_balance = st.session_state.get("wallet_balance", 10000)
+
 
 def get_ticker_list() -> list:
     with open("stocks.json", "r") as f:
@@ -16,7 +18,8 @@ def get_ticker_list() -> list:
 
 
 st.title("Dashboard")
-
+st.subheader(f"Welcome, {st.session_state.username}!")
+st.write(f"Your wallet balance: **${st.session_state.wallet_balance:,.2f}**")
 column1, column2 = st.columns([1, 2])
 tickers = get_ticker_list()
 
@@ -66,6 +69,28 @@ with column1:
                     delta=f"{performance[worst_stock]:.2f}%",
                     delta_color="inverse",
                 )
+    with st.container(border=True):
+        # buy stocks and quantity
+        st.subheader("Buy Stocks")
+        stock_to_buy = st.selectbox("Select Stock to Buy", selected_tickers)
+        quantity_to_buy = st.number_input(
+            "Enter Quantity to Buy", min_value=1, step=1, value=1
+        )
+        if st.button("Buy"):
+            stock_data = yf.Ticker(stock_to_buy)
+            current_price = stock_data.history(period="1d")["Close"].iloc[-1]
+            total_cost = current_price * quantity_to_buy
+
+            if total_cost > st.session_state.wallet_balance:
+                st.error("Insufficient funds to complete the purchase.")
+            else:
+                st.session_state.wallet_balance -= total_cost
+                st.success(
+                    f"Purchased {quantity_to_buy} shares of {stock_to_buy} for ${total_cost:,.2f}."
+                )
+            st.rerun()
+        
+        
 
 with column2:
     with st.container(border=True):
