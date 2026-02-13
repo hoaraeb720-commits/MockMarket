@@ -6,7 +6,13 @@ import yfinance as yf
 import pandas as pd
 import altair as alt
 from session_manager import logout_session
-from database import update_wallet_balance, add_stock_to_portfolio
+from database import (
+    update_wallet_balance,
+    add_stock_to_portfolio,
+    get_user_portfolio,
+    remove_from_portfolio,
+    add_to_wallet,
+)
 
 # ============================================================================
 # Configuration
@@ -314,7 +320,7 @@ def display_trading_section(tickers: list):
         "## :material/trending_up: Trading\n\nBuy and manage your stock portfolio."
     )
 
-    trading_col1, trading_col2 = st.columns([1, 2])
+    trading_col1, trading_col2, trading_col3, trading_col4 = st.columns([1, 1, 1, 1])
 
     with trading_col1:
         with st.container(border=True):
@@ -328,6 +334,81 @@ def display_trading_section(tickers: list):
                     confirm_purchase_modal(stock_to_buy, quantity_to_buy)
             else:
                 st.info("Select stocks above to buy")
+    with trading_col2:
+        with st.container(border=True):
+            st.subheader("Sell Stocks")
+            user_portfolio = get_user_portfolio(username=st.session_state.username)
+            if user_portfolio:
+                # Create a list of owned stocks for selling
+                owned_stocks = {}
+                for stock in user_portfolio:
+                    ticker = stock["stock_ticker"]
+                    quantity = stock["stock_quantity"]
+                    if ticker in owned_stocks:
+                        owned_stocks[ticker] += quantity
+                    else:
+                        owned_stocks[ticker] = quantity
+
+                stock_to_sell = st.selectbox(
+                    "Select Stock to Sell", list(owned_stocks.keys())
+                )
+                max_quantity = owned_stocks[stock_to_sell]
+                quantity_to_sell = st.number_input(
+                    f"Enter Quantity to Sell (Max: {max_quantity})",
+                    min_value=1,
+                    max_value=max_quantity,
+                    step=1,
+                    value=1,
+                )
+
+                if st.button("Sell", use_container_width=True):
+                    st.warning("Selling stocks is not implemented yet.")
+            else:
+                st.info("You don't own any stocks to sell yet.")
+
+    with trading_col3:
+        with st.container(border=True):
+            st.subheader("Your Portfolio")
+            user_portfolio = get_user_portfolio(username=st.session_state.username)
+            if user_portfolio:
+                # condense multiple stocks into one row with quantity and the ticker, no timestamps needed
+                condensed_portfolio = {}
+                for stock in user_portfolio:
+                    ticker = stock["stock_ticker"]
+                    quantity = stock["stock_quantity"]
+                    price = stock["stock_price"]
+                    if ticker in condensed_portfolio:
+                        condensed_portfolio[ticker]["quantity"] += quantity
+                    else:
+                        condensed_portfolio[ticker] = {
+                            "quantity": quantity,
+                            "price": price,
+                        }
+                # show in streamlit just showing the ticker and quantity, but
+                portfolio_data = [
+                    {
+                        "Ticker": ticker,
+                        "Quantity": info["quantity"],
+                        "Price": info["price"],
+                    }
+                    for ticker, info in condensed_portfolio.items()
+                ]
+                st.table(portfolio_data)
+            else:
+                st.info("Your portfolio is empty. Buy some stocks to see them here!")
+
+    with trading_col4:
+        with st.container(border=True):
+            st.subheader("Recent Transactions")
+            user_portfolio = get_user_portfolio(username=st.session_state.username)
+            if user_portfolio:
+                # don't show as table, just rows with the ticker, quantity, price, and timestamp
+                for stock in user_portfolio:
+                    st.markdown(
+                        f"- Bought **{stock['stock_quantity']}** shares of **{stock['stock_ticker']}** at **${stock['stock_price']:.2f}**"
+                    )
+            else:
+                st.info("No transactions yet. Buy some stocks to see them here!")
 
 
 # ============================================================================

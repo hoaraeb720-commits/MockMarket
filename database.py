@@ -16,7 +16,7 @@ def init_db():
     """Initialize the database and create tables if they don't exist."""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     # Users table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -25,7 +25,7 @@ def init_db():
             password_hash TEXT NOT NULL
         )
     """)
-    
+
     # User Wallet table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_wallets (
@@ -35,7 +35,7 @@ def init_db():
             FOREIGN KEY (username) REFERENCES users(username)
         )
     """)
-    
+
     # User Portfolio table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_portfolio (
@@ -48,7 +48,7 @@ def init_db():
             FOREIGN KEY (username) REFERENCES users(username)
         )
     """)
-    
+
     conn.commit()
     conn.close()
 
@@ -110,7 +110,7 @@ def verify_user(username: str, password: str) -> tuple[bool, str]:
 def create_wallet(username: str, initial_funds: float = 10000) -> bool:
     """
     Create a wallet for a new user.
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -133,14 +133,16 @@ def create_wallet(username: str, initial_funds: float = 10000) -> bool:
 def get_wallet_balance(username: str) -> float | None:
     """
     Get the current wallet balance for a user.
-    
+
     Returns:
         Current funds or None if user not found
     """
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT current_funds FROM user_wallets WHERE username = ?", (username,))
+    cursor.execute(
+        "SELECT current_funds FROM user_wallets WHERE username = ?", (username,)
+    )
     result = cursor.fetchone()
     conn.close()
 
@@ -150,7 +152,7 @@ def get_wallet_balance(username: str) -> float | None:
 def update_wallet_balance(username: str, new_balance: float) -> bool:
     """
     Update wallet balance for a user.
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -171,7 +173,7 @@ def update_wallet_balance(username: str, new_balance: float) -> bool:
 def deduct_from_wallet(username: str, amount: float) -> bool:
     """
     Deduct funds from a user's wallet.
-    
+
     Returns:
         True if successful, False if insufficient funds
     """
@@ -184,7 +186,7 @@ def deduct_from_wallet(username: str, amount: float) -> bool:
 def add_to_wallet(username: str, amount: float) -> bool:
     """
     Add funds to a user's wallet.
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -204,7 +206,7 @@ def add_stock_to_portfolio(
 ) -> bool:
     """
     Add a stock purchase to the user's portfolio.
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -227,7 +229,7 @@ def add_stock_to_portfolio(
 def get_user_portfolio(username: str) -> list[dict]:
     """
     Get all stocks in a user's portfolio.
-    
+
     Returns:
         List of dictionaries with stock info
     """
@@ -249,7 +251,7 @@ def get_user_portfolio(username: str) -> list[dict]:
 def get_portfolio_by_ticker(username: str, stock_ticker: str) -> list[dict]:
     """
     Get all holdings of a specific stock for a user.
-    
+
     Returns:
         List of dictionaries with stock info
     """
@@ -274,23 +276,27 @@ def remove_from_portfolio(portfolio_id: int, quantity_to_remove: int) -> bool:
     """
     Remove or reduce quantity from a portfolio entry.
     If quantity matches, delete the entry. Otherwise, reduce the quantity.
-    
+
     Returns:
         True if successful, False otherwise
+
+    @TODO: implement FIFO logic for selling stocks (currently just reduces quantity from the specified entry)
     """
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
         # Get current quantity
-        cursor.execute("SELECT stock_quantity FROM user_portfolio WHERE id = ?", (portfolio_id,))
+        cursor.execute(
+            "SELECT stock_quantity FROM user_portfolio WHERE id = ?", (portfolio_id,)
+        )
         result = cursor.fetchone()
-        
+
         if not result:
             return False
-        
+
         current_quantity = result[0]
-        
+
         if quantity_to_remove >= current_quantity:
             # Delete the entry
             cursor.execute("DELETE FROM user_portfolio WHERE id = ?", (portfolio_id,))
@@ -301,7 +307,7 @@ def remove_from_portfolio(portfolio_id: int, quantity_to_remove: int) -> bool:
                 "UPDATE user_portfolio SET stock_quantity = ? WHERE id = ?",
                 (new_quantity, portfolio_id),
             )
-        
+
         conn.commit()
         return True
     finally:
@@ -311,7 +317,7 @@ def remove_from_portfolio(portfolio_id: int, quantity_to_remove: int) -> bool:
 def delete_portfolio_entry(portfolio_id: int) -> bool:
     """
     Delete a portfolio entry completely.
-    
+
     Returns:
         True if successful, False otherwise
     """
