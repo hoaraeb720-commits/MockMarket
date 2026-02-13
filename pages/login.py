@@ -1,5 +1,5 @@
 import streamlit as st
-from database import verify_user
+from database import verify_user, get_wallet_balance
 from session_manager import create_session
 
 st.header("Welcome to MockMarket")
@@ -27,9 +27,14 @@ with st.form("login_form"):
             if success:
                 # Create persistent session token
                 token = create_session(username)
+                # Get wallet balance from database
+                wallet_balance = get_wallet_balance(username)
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.session_token = token
+                st.session_state.wallet_balance = (
+                    wallet_balance if wallet_balance is not None else 10000
+                )
                 st.success(message)
                 # Add token to URL so it persists across refreshes
                 st.query_params["session_token"] = token

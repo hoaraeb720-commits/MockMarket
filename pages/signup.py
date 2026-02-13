@@ -1,5 +1,5 @@
 import streamlit as st
-from database import create_user
+from database import create_user, create_wallet
 from session_manager import create_session
 
 st.header("Create an Account")
@@ -19,6 +19,8 @@ with st.form("signup_form"):
         else:
             success, message = create_user(username, password)
             if success:
+                # Create wallet for new user
+                create_wallet(username)
                 st.success(message)
                 # Create persistent session token
                 token = create_session(username)
@@ -26,6 +28,7 @@ with st.form("signup_form"):
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.session_token = token
+                st.session_state.wallet_balance = 10000
                 # Add token to URL so it persists across refreshes
                 st.query_params["session_token"] = token
                 st.rerun()

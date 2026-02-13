@@ -5,7 +5,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
-from session_manager import update_session_data, logout_session
+from session_manager import logout_session
+from database import update_wallet_balance, add_stock_to_portfolio
 
 # ============================================================================
 # Configuration
@@ -58,6 +59,14 @@ def load_stock_data(tickers: list, period: str) -> pd.DataFrame:
     return data["Close"]
 
 
+@st.cache_data(ttl=300)
+def get_current_stock_price(ticker: str) -> float:
+    """Get the current stock price for a given ticker"""
+    stock_data = yf.Ticker(ticker)
+    current_price = stock_data.history(period="1d")["Close"].iloc[-1]
+    return current_price
+
+
 # ============================================================================
 # Session State Management
 # ============================================================================
@@ -72,12 +81,10 @@ def initialize_session_state():
 
 
 def save_wallet_balance():
-    """Save wallet balance to persistent session storage"""
-    if st.session_state.session_token:
-        update_session_data(
-            st.session_state.session_token,
-            wallet_balance=st.session_state.wallet_balance
-        )
+    """Save wallet balance to database"""
+    username = st.session_state.get("username")
+    if username:
+        update_wallet_balance(username, st.session_state.wallet_balance)
 
 
 def initialize_tickers_input():
@@ -129,14 +136,14 @@ def display_header():
 
     # Create header with logout button
     col1, col2 = st.columns([0.85, 0.15])
-    
+
     with col1:
         st.markdown(
             f"""# :material/query_stats: Stock Comparison Dashboard
 
 Welcome, **{username}**! Compare stocks and manage your trading portfolio."""
         )
-    
+
     with col2:
         if st.button("Logout", use_container_width=True):
             logout_session(st.session_state.session_token)
@@ -145,7 +152,7 @@ Welcome, **{username}**! Compare stocks and manage your trading portfolio."""
             st.session_state.session_token = None
             st.query_params.pop("session_token", None)
             st.rerun()
-    
+
     st.write(f"**Wallet Balance:** ${balance:,.2f}")
     ""  # Add spacing
 
@@ -237,8 +244,49 @@ def display_comparison_chart(right_cell, normalized: pd.DataFrame):
 
 # ============================================================================
 # UI Components - Trading
+
+
+@st.dialog("Confirm Purchase")
+def confirm_purchase_modal(ticker: str, quantity: int):
+    """Modal dialog to confirm stock purchase before executing"""
+    try:
+        current_price = get_current_stock_price(ticker)
+        total_cost = current_price * quantity
+
+        # Display purchase details
+        st.markdown(f"### Purchase Details for **{ticker}**")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Quantity", f"{quantity} shares")
+            st.metric("Price per Share", f"${current_price:.2f}")
+        with col2:
+            st.metric("Total Cost", f"${total_cost:,.2f}")
+            st.metric("Wallet Balance", f"${st.session_state.wallet_balance:,.2f}")
+
+        st.divider()
+
+        # Warning if insufficient funds
+        if total_cost > st.session_state.wallet_balance:
+            st.error("❌ Insufficient funds for this purchase!")
+        else:
+            st.success(
+                f"✅ You will have ${st.session_state.wallet_balance - total_cost:,.2f} remaining after this purchase"
+            )
+
+        # Action buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Confirm Purchase", use_container_width=True):
+                execute_stock_purchase(ticker, quantity)
+        with col2:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.rerun()
+    except Exception as e:
+        st.error(f"Error loading price: {str(e)}")
+
+
 def execute_stock_purchase(ticker: str, quantity: int) -> bool:
-    """Execute stock purchase and update wallet balance"""
+    """Execute stock purchase and update wallet balance and portfolio"""
     stock_data = yf.Ticker(ticker)
     current_price = stock_data.history(period="1d")["Close"].iloc[-1]
     total_cost = current_price * quantity
@@ -247,8 +295,14 @@ def execute_stock_purchase(ticker: str, quantity: int) -> bool:
         st.error("Insufficient funds to complete the purchase.")
         return False
     else:
+        # Update wallet balance
         st.session_state.wallet_balance -= total_cost
         save_wallet_balance()
+
+        # Add stock to portfolio
+        username = st.session_state.get("username")
+        add_stock_to_portfolio(username, ticker, current_price, quantity)
+
         st.success(f"Purchased {quantity} shares of {ticker} for ${total_cost:,.2f}.")
         st.rerun()
         return True
@@ -270,8 +324,8 @@ def display_trading_section(tickers: list):
                 quantity_to_buy = st.number_input(
                     "Enter Quantity to Buy", min_value=1, step=1, value=1
                 )
-                if st.button("Buy"):
-                    execute_stock_purchase(stock_to_buy, quantity_to_buy)
+                if st.button("Buy", use_container_width=True):
+                    confirm_purchase_modal(stock_to_buy, quantity_to_buy)
             else:
                 st.info("Select stocks above to buy")
 
