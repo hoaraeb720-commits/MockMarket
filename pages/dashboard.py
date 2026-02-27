@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 
 import streamlit as st
@@ -11,7 +10,6 @@ from database import (
     add_stock_to_portfolio,
     get_user_portfolio,
     remove_from_portfolio,
-    add_to_wallet,
 )
 
 # ============================================================================
@@ -314,6 +312,146 @@ def execute_stock_purchase(ticker: str, quantity: int) -> bool:
         return True
 
 
+def execute_stock_sale(ticker: str, quantity: int) -> bool:
+    try:
+        username = st.session_state.get("username")
+
+        # Get current market price
+        current_price = get_current_stock_price(ticker)
+
+        # Get user portfolio
+        user_portfolio = get_user_portfolio(username)
+
+        # Calculate average purchase price
+        total_shares = 0
+        total_cost = 0
+
+        for stock in user_portfolio:
+            if stock["stock_ticker"] == ticker:
+                total_shares += stock["stock_quantity"]
+                total_cost += stock["stock_quantity"] * stock["stock_price"]
+
+        avg_cost = total_cost / total_shares
+
+        sale_value = current_price * quantity
+        cost_basis = avg_cost * quantity
+        profit_loss = sale_value - cost_basis
+
+        # Add money to wallet
+        st.session_state.wallet_balance += sale_value
+        save_wallet_balance()
+
+        # Remove shares
+        remove_from_portfolio(username, ticker, quantity)
+
+        if profit_loss >= 0:
+            st.success(
+                f"Sold {quantity} shares of {ticker} for ${sale_value:,.2f}. "
+                f"Profit: ${profit_loss:,.2f}"
+            )
+        else:
+            st.error(
+                f"Sold {quantity} shares of {ticker} for ${sale_value:,.2f}. "
+                f"Loss: ${abs(profit_loss):,.2f}"
+            )
+
+        st.rerun()
+        return True
+
+    except Exception as e:
+        st.error(f"Error executing sale: {str(e)}")
+        return False
+
+
+def calculate_fifo_sale_preview(username: str, ticker: str, quantity: int):
+    """
+    Simulate FIFO sale and return:
+    (current_price, total_sale_value, total_cost_basis, profit_loss)
+    """
+    current_price = get_current_stock_price(ticker)
+    user_portfolio = get_user_portfolio(username)
+
+    # Filter ticker
+    purchases = [stock for stock in user_portfolio if stock["stock_ticker"] == ticker]
+
+    # Explicit FIFO sort (oldest first)
+    purchases = sorted(purchases, key=lambda x: x["bought_at"])
+
+    remaining = quantity
+    total_cost_basis = 0
+
+    for stock in purchases:
+        if remaining <= 0:
+            break
+
+        available = stock["stock_quantity"]
+        price = stock["stock_price"]
+
+        if available <= remaining:
+            total_cost_basis += available * price
+            remaining -= available
+        else:
+            total_cost_basis += remaining * price
+            remaining = 0
+
+    total_sale_value = current_price * quantity
+    profit_loss = total_sale_value - total_cost_basis
+
+    return current_price, total_sale_value, total_cost_basis, profit_loss
+
+
+@st.dialog("Confirm Sale")
+def confirm_sale_modal(ticker: str, quantity: int):
+    username = st.session_state.get("username")
+
+    try:
+        current_price, sale_value, cost_basis, profit_loss = (
+            calculate_fifo_sale_preview(username, ticker, quantity)
+        )
+
+        st.markdown(f"### Sale Details for **{ticker}**")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric("Quantity", f"{quantity} shares")
+            st.metric("Current Price", f"${current_price:.2f}")
+            st.metric("Total Sale Value", f"${sale_value:,.2f}")
+
+        with col2:
+            st.metric("Cost Basis (FIFO)", f"${cost_basis:,.2f}")
+
+            if profit_loss >= 0:
+                st.metric(
+                    "Projected Gain",
+                    f"${profit_loss:,.2f}",
+                    delta="Profit",
+                )
+                st.success("✅ You are selling at a gain.")
+            else:
+                st.metric(
+                    "Projected Loss",
+                    f"${abs(profit_loss):,.2f}",
+                    delta="Loss",
+                )
+                st.error("⚠️ You are selling at a loss.")
+
+        st.divider()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("✅ Confirm Sale", use_container_width=True):
+                execute_stock_sale(ticker, quantity)
+
+        with col2:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.rerun()
+
+    except Exception as e:
+        st.error(f"Error calculating sale preview: {str(e)}")
+
+
 def display_trading_section(tickers: list):
     """Display stock trading interface"""
     st.markdown(
@@ -362,7 +500,7 @@ def display_trading_section(tickers: list):
                 )
 
                 if st.button("Sell", use_container_width=True):
-                    st.warning("Selling stocks is not implemented yet.")
+                    confirm_sale_modal(stock_to_sell, quantity_to_sell)
             else:
                 st.info("You don't own any stocks to sell yet.")
 
@@ -424,7 +562,6 @@ def main():
 
     # Display header
     display_header()
-    ""
 
     # Get stock selections
     all_tickers = get_ticker_list()
@@ -464,8 +601,6 @@ def main():
     display_comparison_chart(right_cell, normalized)
 
     # Display trading section
-    ""
-    ""
     display_trading_section(tickers)
 
 

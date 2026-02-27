@@ -272,44 +272,65 @@ def get_portfolio_by_ticker(username: str, stock_ticker: str) -> list[dict]:
     return [dict(row) for row in results]
 
 
-def remove_from_portfolio(portfolio_id: int, quantity_to_remove: int) -> bool:
+def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -> bool:
     """
-    Remove or reduce quantity from a portfolio entry.
-    If quantity matches, delete the entry. Otherwise, reduce the quantity.
+    Remove shares using FIFO logic (oldest purchases first).
 
     Returns:
-        True if successful, False otherwise
-
-    @TODO: implement FIFO logic for selling stocks (currently just reduces quantity from the specified entry)
+        True if successful, False if not enough shares.
     """
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        # Get current quantity
+        # Get all purchases for this user + ticker ordered by oldest first
         cursor.execute(
-            "SELECT stock_quantity FROM user_portfolio WHERE id = ?", (portfolio_id,)
+            """
+            SELECT id, stock_quantity
+            FROM user_portfolio
+            WHERE username = ? AND stock_ticker = ?
+            ORDER BY id ASC
+            """,
+            (username, ticker),
         )
-        result = cursor.fetchone()
 
-        if not result:
+        rows = cursor.fetchall()
+
+        total_available = sum(row[1] for row in rows)
+
+        # Not enough shares
+        if quantity_to_remove > total_available:
             return False
 
-        current_quantity = result[0]
+        remaining_to_sell = quantity_to_remove
 
-        if quantity_to_remove >= current_quantity:
-            # Delete the entry
-            cursor.execute("DELETE FROM user_portfolio WHERE id = ?", (portfolio_id,))
-        else:
-            # Reduce quantity
-            new_quantity = current_quantity - quantity_to_remove
-            cursor.execute(
-                "UPDATE user_portfolio SET stock_quantity = ? WHERE id = ?",
-                (new_quantity, portfolio_id),
-            )
+        for portfolio_id, stock_quantity in rows:
+            if remaining_to_sell <= 0:
+                break
+
+            if stock_quantity <= remaining_to_sell:
+                # Sell entire row
+                cursor.execute(
+                    "DELETE FROM user_portfolio WHERE id = ?",
+                    (portfolio_id,),
+                )
+                remaining_to_sell -= stock_quantity
+            else:
+                # Partially reduce row
+                new_quantity = stock_quantity - remaining_to_sell
+                cursor.execute(
+                    "UPDATE user_portfolio SET stock_quantity = ? WHERE id = ?",
+                    (new_quantity, portfolio_id),
+                )
+                remaining_to_sell = 0
 
         conn.commit()
         return True
+
+    except Exception as e:
+        print("Error in FIFO sell:", e)
+        return False
+
     finally:
         conn.close()
 
