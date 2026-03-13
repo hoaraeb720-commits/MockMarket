@@ -22,7 +22,7 @@ st.set_page_config(
     layout="wide",
 )
 
-DEFAULT_STOCKS = ["AAPL", "MSFT", "GOOGL", "NVDA", "AMZN", "TSLA", "META"]
+DEFAULT_STOCKS = ["AAPL", "MSFT", "GOOGL", "NVDA", "AMZN", "TSLA"]
 HORIZON_MAP = {
     "1 Month": "1mo",
     "3 Months": "3mo",
