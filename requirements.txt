@@ -1,3 +1,4 @@
 streamlit
 yfinance
 altair
+pymongo[srv]
