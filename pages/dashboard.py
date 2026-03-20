@@ -10,7 +10,9 @@ from database import (
     add_stock_to_portfolio,
     get_user_portfolio,
     remove_from_portfolio,
+    calculate_net_worth,
 )
+from ticker import get_current_stock_price, load_stock_data
 
 # ============================================================================
 # Configuration
@@ -51,24 +53,6 @@ def get_ticker_list() -> list:
 def tickers_to_str(tickers: list) -> str:
     """Convert ticker list to comma-separated string"""
     return ",".join(tickers)
-
-
-@st.cache_resource(show_spinner=False, ttl="1h")
-def load_stock_data(tickers: list, period: str) -> pd.DataFrame:
-    """Load historical stock data from yfinance"""
-    tickers_obj = yf.Tickers(tickers)
-    data = tickers_obj.history(period=period)
-    if data is None:
-        raise RuntimeError("YFinance returned no data.")
-    return data["Close"]
-
-
-@st.cache_data(ttl=300)
-def get_current_stock_price(ticker: str) -> float:
-    """Get the current stock price for a given ticker"""
-    stock_data = yf.Ticker(ticker)
-    current_price = stock_data.history(period="1d")["Close"].iloc[-1]
-    return current_price
 
 
 # ============================================================================
@@ -158,6 +142,10 @@ Welcome, **{username}**! Compare stocks and manage your trading portfolio."""
             st.rerun()
 
     st.write(f"**Wallet Balance:** ${balance:,.2f}")
+
+    username = st.session_state.get("username")
+    net_worth = calculate_net_worth(username=username)
+    st.write(f"**Net Worth:** ${net_worth:,.2f}")
     ""  # Add spacing
 
 

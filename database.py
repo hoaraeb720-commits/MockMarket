@@ -1,4 +1,3 @@
-import sqlite3
 import hashlib
 from datetime import datetime
 
@@ -6,13 +5,9 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 import streamlit as st
 
+from ticker import get_current_stock_price
+
 DATABASE_PATH = "mockmarket.db"
-
-
-def get_connection():
-    """Get a connection to the SQLite database."""
-    conn = sqlite3.connect(DATABASE_PATH)
-    return conn
 
 
 @st.cache_resource
@@ -27,47 +22,6 @@ def create_mongodb_connection():
     except Exception as e:
         print(e)
     return client
-
-
-def init_db():
-    """Initialize the database and create tables if they don't exist."""
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # Users table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    """)
-
-    # User Wallet table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_wallets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            current_funds REAL NOT NULL DEFAULT 10000,
-            FOREIGN KEY (username) REFERENCES users(username)
-        )
-    """)
-
-    # User Portfolio table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_portfolio (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            stock_ticker TEXT NOT NULL,
-            stock_price REAL NOT NULL,
-            stock_quantity INTEGER NOT NULL,
-            bought_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (username) REFERENCES users(username)
-        )
-    """)
-
-    conn.commit()
-    conn.close()
 
 
 def hash_password(password: str) -> str:
@@ -152,27 +106,6 @@ def get_wallet_balance(username: str) -> float | None:
     return wallet_doc["current_funds"] if wallet_doc else None
 
 
-# def update_wallet_balance(username: str, new_balance: float) -> bool:
-#     """
-#     Update wallet balance for a user.
-
-#     Returns:
-#         True if successful, False otherwise
-#     """
-#     conn = get_connection()
-#     cursor = conn.cursor()
-
-#     try:
-#         cursor.execute(
-#             "UPDATE user_wallets SET current_funds = ? WHERE username = ?",
-#             (new_balance, username),
-#         )
-#         conn.commit()
-#         return cursor.rowcount > 0
-#     finally:
-#         conn.close()
-
-
 def update_wallet_balance(username: str, new_balance: float) -> bool:
     """
     Update wallet balance for a user in MongoDB.
@@ -193,31 +126,6 @@ def update_wallet_balance(username: str, new_balance: float) -> bool:
 # ============================================================================
 # Portfolio Management
 # ============================================================================
-
-
-# def add_stock_to_portfolio(
-#     username: str, stock_ticker: str, stock_price: float, stock_quantity: int
-# ) -> bool:
-#     """
-#     Add a stock purchase to the user's portfolio.
-
-#     Returns:
-#         True if successful, False otherwise
-#     """
-#     conn = get_connection()
-#     cursor = conn.cursor()
-
-#     try:
-#         cursor.execute(
-#             """INSERT INTO user_portfolio
-#                (username, stock_ticker, stock_price, stock_quantity, bought_at)
-#                VALUES (?, ?, ?, ?, ?)""",
-#             (username, stock_ticker, stock_price, stock_quantity, datetime.now()),
-#         )
-#         conn.commit()
-#         return True
-#     finally:
-#         conn.close()
 
 
 def add_stock_to_portfolio(
@@ -245,28 +153,6 @@ def add_stock_to_portfolio(
     return True
 
 
-# def get_user_portfolio(username: str) -> list[dict]:
-#     """
-#     Get all stocks in a user's portfolio.
-
-#     Returns:
-#         List of dictionaries with stock info
-#     """
-#     conn = get_connection()
-#     conn.row_factory = sqlite3.Row
-#     cursor = conn.cursor()
-
-#     cursor.execute(
-#         """SELECT id, stock_ticker, stock_price, stock_quantity, bought_at
-#            FROM user_portfolio WHERE username = ? ORDER BY bought_at DESC""",
-#         (username,),
-#     )
-#     results = cursor.fetchall()
-#     conn.close()
-
-#     return [dict(row) for row in results]
-
-
 def get_user_portfolio(username: str) -> list[dict]:
     """
     Get all stocks in a user's portfolio from MongoDB.
@@ -280,69 +166,6 @@ def get_user_portfolio(username: str) -> list[dict]:
 
     cursor = portfolio_collection.find({"username": username}).sort("bought_at", -1)
     return [doc for doc in cursor]
-
-
-# def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -> bool:
-#     """
-#     Remove shares using FIFO logic (oldest purchases first).
-
-#     Returns:
-#         True if successful, False if not enough shares.
-#     """
-#     conn = get_connection()
-#     cursor = conn.cursor()
-
-#     try:
-#         # Get all purchases for this user + ticker ordered by oldest first
-#         cursor.execute(
-#             """
-#             SELECT id, stock_quantity
-#             FROM user_portfolio
-#             WHERE username = ? AND stock_ticker = ?
-#             ORDER BY id ASC
-#             """,
-#             (username, ticker),
-#         )
-
-#         rows = cursor.fetchall()
-
-#         total_available = sum(row[1] for row in rows)
-
-#         # Not enough shares
-#         if quantity_to_remove > total_available:
-#             return False
-
-#         remaining_to_sell = quantity_to_remove
-
-#         for portfolio_id, stock_quantity in rows:
-#             if remaining_to_sell <= 0:
-#                 break
-
-#             if stock_quantity <= remaining_to_sell:
-#                 # Sell entire row
-#                 cursor.execute(
-#                     "DELETE FROM user_portfolio WHERE id = ?",
-#                     (portfolio_id,),
-#                 )
-#                 remaining_to_sell -= stock_quantity
-#             else:
-#                 # Partially reduce row
-#                 new_quantity = stock_quantity - remaining_to_sell
-#                 cursor.execute(
-#                     "UPDATE user_portfolio SET stock_quantity = ? WHERE id = ?",
-#                     (new_quantity, portfolio_id),
-#                 )
-#                 remaining_to_sell = 0
-
-#         conn.commit()
-#         return True
-
-#     except Exception as e:
-#         print("Error in FIFO sell:", e)
-#         return False
-
-#     finally:
-#         conn.close()
 
 
 def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -> bool:
@@ -392,5 +215,23 @@ def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -
     return True
 
 
-# Initialize the database when this module is imported
-init_db()
+def calculate_net_worth(username: str) -> float:
+    mongodb_client = create_mongodb_connection()
+    db = mongodb_client["mockmarket"]
+    wallet_funds = list(db["user_wallets"].find({"username": username}))[0][
+        "current_funds"
+    ]
+
+    user_portfolio_data = list(db["user_portfolio"].find({"username": username}))
+    list_of_tickers = [
+        {
+            "ticker_symbol": portfolio["stock_ticker"],
+            "quantity": portfolio["stock_quantity"],
+        }
+        for portfolio in user_portfolio_data
+    ]
+    stock_price_for_tickers = [
+        get_current_stock_price(ticker=ticker["ticker_symbol"]) * ticker["quantity"]
+        for ticker in list_of_tickers
+    ]
+    return sum(stock_price_for_tickers) + wallet_funds

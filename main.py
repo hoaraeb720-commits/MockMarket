@@ -30,6 +30,7 @@ if not st.session_state.logged_in and "session_token" in st.query_params:
 if st.session_state.logged_in:
     pages = [
         st.Page("pages/dashboard.py", title="Dashboard"),
+        st.Page("pages/leaderboard.py", title="Leaderboard")
     ]
 else:
     pages = [
