@@ -4,3 +4,4 @@ altair
 pymongo[srv]
 plotly
 holidays
+prophet
