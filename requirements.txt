@@ -2,3 +2,5 @@ streamlit
 yfinance
 altair
 pymongo[srv]
+plotly
+holidays
