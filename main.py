@@ -13,7 +13,7 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in and "session_token" in st.query_params:
     token = st.query_params.get("session_token")
     is_valid, username = validate_session(token)
-    
+
     if is_valid:
         # Restore session
         st.session_state.logged_in = True
@@ -21,7 +21,9 @@ if not st.session_state.logged_in and "session_token" in st.query_params:
         st.session_state.session_token = token
         # Get wallet balance from database
         wallet_balance = get_wallet_balance(username)
-        st.session_state.wallet_balance = wallet_balance if wallet_balance is not None else 10000
+        st.session_state.wallet_balance = (
+            wallet_balance if wallet_balance is not None else 10000
+        )
     else:
         # Invalid session token, remove it
         st.query_params.pop("session_token", None)
@@ -30,7 +32,8 @@ if not st.session_state.logged_in and "session_token" in st.query_params:
 if st.session_state.logged_in:
     pages = [
         st.Page("pages/dashboard.py", title="Dashboard"),
-        st.Page("pages/leaderboard.py", title="Leaderboard")
+        st.Page("pages/leaderboard.py", title="Leaderboard"),
+        st.Page("pages/predict.py", title="Make a Prediction"),
     ]
 else:
     pages = [
@@ -40,4 +43,3 @@ else:
 
 pg = st.navigation(pages, position="top")
 pg.run()
-

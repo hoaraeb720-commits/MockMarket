@@ -1,17 +1,7 @@
 {
-  "3dffa585-37ab-494f-adb5-fda985c2650d": {
+  "24cfef7f-d2f9-46e8-8805-176c1a5ae749": {
     "username": "Ao",
-    "created_at": "2026-03-19T18:22:11.599455",
-    "wallet_balance": 10000
-  },
-  "b64fa8fa-dbe5-48fe-89a9-d678405ac301": {
-    "username": "Ao",
-    "created_at": "2026-03-19T19:39:40.454163",
-    "wallet_balance": 10000
-  },
-  "fa784e96-ed63-4a11-bb70-54c65bd8c1c6": {
-    "username": "Ao",
-    "created_at": "2026-03-19T20:15:18.354438",
+    "created_at": "2026-04-02T20:05:24.604926",
     "wallet_balance": 10000
   }
 }

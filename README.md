@@ -16,4 +16,6 @@ Next time:
 Features
 1. Admin account to show all users and their stats
 2. Leaderboard showing total net worth
-3. 
+3. See other options for Stock API since YFinance isn't that stable
+4. 1-3 month prediction for each stock
+
