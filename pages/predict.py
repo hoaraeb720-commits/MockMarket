@@ -38,7 +38,7 @@ with c4:
 with c5:
     st.write("")
     st.write("")
-    run_btn = st.button("Run Forecast", use_container_width=True, type="primary")
+    run_btn = st.button("Run Forecast", width="stretch", type="primary")
 
 st.divider()
 
@@ -373,28 +373,28 @@ if run_btn:
 
     # ── Forecast ───────────────────────────────
     st.subheader("Forecast")
-    st.plotly_chart(plot_forecast(df, forecast), use_container_width=True)
+    st.plotly_chart(plot_forecast(df, forecast), width="stretch")
 
     # ── Components ─────────────────────────────
     st.subheader("Model components")
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.plotly_chart(plot_trend(forecast, df), use_container_width=True)
+        st.plotly_chart(plot_trend(forecast, df), width="stretch")
     with col_b:
-        st.plotly_chart(plot_weekly(forecast), use_container_width=True)
+        st.plotly_chart(plot_weekly(forecast), width="stretch")
 
     col_c, col_d = st.columns(2)
     with col_c:
-        st.plotly_chart(plot_yearly(forecast), use_container_width=True)
+        st.plotly_chart(plot_yearly(forecast), width="stretch")
     with col_d:
         fig_vol = plot_volume(forecast)
         if fig_vol:
-            st.plotly_chart(fig_vol, use_container_width=True)
+            st.plotly_chart(fig_vol, width="stretch")
 
     fig_hol = plot_holidays(forecast, holiday_df)
     if fig_hol:
-        st.plotly_chart(fig_hol, use_container_width=True)
+        st.plotly_chart(fig_hol, width="stretch")
 
     # ── Table ──────────────────────────────────
     st.subheader("Forecast table")
@@ -403,7 +403,7 @@ if run_btn:
     table["Date"] = table["Date"].dt.strftime("%Y-%m-%d")
     for c in ["Forecast ($)", "Lower ($)", "Upper ($)"]:
         table[c] = table[c].map("${:.2f}".format)
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(table, width="stretch", hide_index=True)
 
 else:
     st.info("👆 Set your parameters above and click **Run Forecast**.")

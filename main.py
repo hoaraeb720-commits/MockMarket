@@ -34,6 +34,7 @@ if st.session_state.logged_in:
         st.Page("pages/dashboard.py", title="Dashboard"),
         st.Page("pages/leaderboard.py", title="Leaderboard"),
         st.Page("pages/predict.py", title="Make a Prediction"),
+        st.Page("pages/monte_carlo.py", title="Monte Carlo Simulation"),
     ]
 else:
     pages = [
