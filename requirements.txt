@@ -5,3 +5,7 @@ pymongo[srv]
 plotly
 holidays
 prophet
+transformers 
+torch 
+wordninja
+torchvision
