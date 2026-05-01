@@ -235,3 +235,17 @@ def calculate_net_worth(username: str) -> float:
         for ticker in list_of_tickers
     ]
     return sum(stock_price_for_tickers) + wallet_funds
+
+def get_all_users_net_worth() -> list[dict]:
+    client = create_mongodb_connection()
+    db = client["mockmarket"]
+    users_collection = db["users"]
+
+    users = list(users_collection.find())
+    net_worth_list = []
+    for user in users:
+        username = user["username"]
+        net_worth = calculate_net_worth(username)
+        net_worth_list.append({"username": username, "net_worth": net_worth})
+
+    return net_worth_list
