@@ -5,7 +5,10 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 import altair as alt
+from auth_helper import require_login
 
+# Ensure user is logged in
+require_login()
 
 # ============================================================================
 # Configuration

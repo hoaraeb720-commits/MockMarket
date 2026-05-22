@@ -9,6 +9,10 @@ import holidays
 import streamlit as st
 from prophet import Prophet
 import yfinance as yf
+from auth_helper import require_login
+
+# Ensure user is logged in
+require_login()
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG

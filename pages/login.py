@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from database import verify_user, get_wallet_balance
 from session_manager import create_session
 
@@ -361,7 +360,7 @@ LEFT_PANEL_HTML = """
 left_col, right_col = st.columns([1.15, 0.85])
 
 with left_col:
-    components.html(LEFT_PANEL_HTML, height=800, scrolling=False)
+    st.iframe(LEFT_PANEL_HTML, height=800)
 
 with right_col:
     st.markdown("""

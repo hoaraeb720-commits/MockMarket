@@ -4,6 +4,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
+from auth_helper import require_login
 from session_manager import logout_session
 from database import (
     update_wallet_balance,
@@ -13,6 +14,9 @@ from database import (
     calculate_net_worth,
 )
 from ticker import get_current_stock_price, load_stock_data
+
+# Ensure user is logged in
+require_login()
 
 # ============================================================================
 # Configuration
@@ -55,6 +59,15 @@ def tickers_to_str(tickers: list) -> str:
     return ",".join(tickers)
 
 
+@st.cache_data(ttl=300)
+def load_ohlc_data(ticker: str, period: str) -> pd.DataFrame:
+    """Load OHLC data for a single ticker (used for candlestick chart)"""
+    df = yf.Ticker(ticker).history(period=period)
+    df = df[["Open", "High", "Low", "Close"]].reset_index()
+    df["Date"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
+    return df
+
+
 # ============================================================================
 # Session State Management
 # ============================================================================
@@ -66,6 +79,8 @@ def initialize_session_state():
         st.session_state.wallet_balance = 10000
     if "session_token" not in st.session_state:
         st.session_state.session_token = None
+    if "chart_type" not in st.session_state:
+        st.session_state.chart_type = "Line"
 
 
 def save_wallet_balance():
@@ -122,7 +137,6 @@ def display_header():
     username = st.session_state.get("username", "User")
     balance = st.session_state.wallet_balance
 
-    # Create header with logout button
     col1, col2 = st.columns([0.85, 0.15])
 
     with col1:
@@ -133,7 +147,7 @@ Welcome, **{username}**! Compare stocks and manage your trading portfolio."""
         )
 
     with col2:
-        if st.button("Logout", use_container_width=True):
+        if st.button("Logout", width="stretch"):
             logout_session(st.session_state.session_token)
             st.session_state.logged_in = False
             st.session_state.username = None
@@ -172,6 +186,16 @@ def create_stock_selector(all_tickers: list) -> tuple:
             default="6 Months",
         )
 
+        # ── Chart type toggle ──────────────────────────────────────────
+        chart_type = st.pills(
+            "Chart type",
+            options=["Line", "Candlestick"],
+            default=st.session_state.chart_type,
+            key="chart_type_pills",
+        )
+        if chart_type:
+            st.session_state.chart_type = chart_type
+
     right_cell = cols[1].container(
         border=True, height="stretch", vertical_alignment="center"
     )
@@ -209,7 +233,7 @@ def display_performance_metrics(cols: list, max_stock: tuple, min_stock: tuple):
         )
 
 
-def create_price_chart(normalized: pd.DataFrame) -> alt.Chart:
+def create_line_chart(normalized: pd.DataFrame) -> alt.Chart:
     """Create an Altair line chart for normalized stock prices"""
     chart_data = normalized.reset_index().melt(
         id_vars=["Date"], var_name="Stock", value_name="Normalized price"
@@ -227,15 +251,80 @@ def create_price_chart(normalized: pd.DataFrame) -> alt.Chart:
     )
 
 
-def display_comparison_chart(right_cell, normalized: pd.DataFrame):
-    """Display the stock price comparison chart"""
+def create_candlestick_chart(ohlc: pd.DataFrame, ticker: str) -> alt.LayerChart:
+    """Create an Altair candlestick chart for a single ticker"""
+    base = alt.Chart(ohlc).encode(
+        alt.X("Date:T", axis=alt.Axis(title="Date", grid=False)),
+        color=alt.condition(
+            "datum.Open <= datum.Close",
+            alt.value("#00C805"),   # green candle
+            alt.value("#FF3B30"),   # red candle
+        ),
+        tooltip=[
+            alt.Tooltip("Date:T", title="Date"),
+            alt.Tooltip("Open:Q",  title="Open",  format="$.2f"),
+            alt.Tooltip("High:Q",  title="High",  format="$.2f"),
+            alt.Tooltip("Low:Q",   title="Low",   format="$.2f"),
+            alt.Tooltip("Close:Q", title="Close", format="$.2f"),
+        ],
+    )
+
+    # High-low wick
+    rule = base.mark_rule(strokeWidth=1).encode(
+        alt.Y("Low:Q",  title="Price ($)", scale=alt.Scale(zero=False)),
+        alt.Y2("High:Q"),
+    )
+
+    # Open-close body
+    bar = base.mark_bar(width={"band": 0.6}).encode(
+        alt.Y("Open:Q",  scale=alt.Scale(zero=False)),
+        alt.Y2("Close:Q"),
+    )
+
+    return (
+        (rule + bar)
+        .properties(height=400, title=f"{ticker} — Candlestick Chart")
+        .configure_axis(labelColor="#888", titleColor="#888", gridColor="#1e1e1e")
+        .configure_title(color="#ccc")
+        .configure_view(strokeWidth=0)
+    )
+
+
+def display_comparison_chart(
+    right_cell,
+    normalized: pd.DataFrame,
+    tickers: list,
+    horizon_period: str,
+):
+    """Display either the line chart or candlestick chart based on toggle"""
+    chart_type = st.session_state.chart_type
+
     with right_cell:
-        chart = create_price_chart(normalized)
-        st.altair_chart(chart)
+        if chart_type == "Candlestick":
+            # Candlestick only works for a single ticker — let user pick one
+            if len(tickers) > 1:
+                candle_ticker = st.selectbox(
+                    "Select ticker for candlestick view",
+                    options=tickers,
+                    key="candle_ticker_select",
+                )
+            else:
+                candle_ticker = tickers[0]
+
+            try:
+                ohlc = load_ohlc_data(candle_ticker, horizon_period)
+                chart = create_candlestick_chart(ohlc, candle_ticker)
+                st.altair_chart(chart, width="stretch")
+            except Exception as e:
+                st.error(f"Could not load candlestick data: {e}")
+        else:
+            chart = create_line_chart(normalized)
+            st.altair_chart(chart, width="stretch")
 
 
 # ============================================================================
 # UI Components - Trading
+# ============================================================================
 
 
 @st.dialog("Confirm Purchase")
@@ -245,7 +334,6 @@ def confirm_purchase_modal(ticker: str, quantity: int):
         current_price = get_current_stock_price(ticker)
         total_cost = current_price * quantity
 
-        # Display purchase details
         st.markdown(f"### Purchase Details for **{ticker}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -257,7 +345,6 @@ def confirm_purchase_modal(ticker: str, quantity: int):
 
         st.divider()
 
-        # Warning if insufficient funds
         if total_cost > st.session_state.wallet_balance:
             st.error("❌ Insufficient funds for this purchase!")
         else:
@@ -265,13 +352,12 @@ def confirm_purchase_modal(ticker: str, quantity: int):
                 f"✅ You will have ${st.session_state.wallet_balance - total_cost:,.2f} remaining after this purchase"
             )
 
-        # Action buttons
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ Confirm Purchase", use_container_width=True):
+            if st.button("✅ Confirm Purchase", width="stretch"):
                 execute_stock_purchase(ticker, quantity)
         with col2:
-            if st.button("❌ Cancel", use_container_width=True):
+            if st.button("❌ Cancel", width="stretch"):
                 st.rerun()
     except Exception as e:
         st.error(f"Error loading price: {str(e)}")
@@ -287,11 +373,9 @@ def execute_stock_purchase(ticker: str, quantity: int) -> bool:
         st.error("Insufficient funds to complete the purchase.")
         return False
     else:
-        # Update wallet balance
         st.session_state.wallet_balance -= total_cost
         save_wallet_balance()
 
-        # Add stock to portfolio
         username = st.session_state.get("username")
         add_stock_to_portfolio(username, ticker, current_price, quantity)
 
@@ -303,33 +387,23 @@ def execute_stock_purchase(ticker: str, quantity: int) -> bool:
 def execute_stock_sale(ticker: str, quantity: int) -> bool:
     try:
         username = st.session_state.get("username")
-
-        # Get current market price
         current_price = get_current_stock_price(ticker)
-
-        # Get user portfolio
         user_portfolio = get_user_portfolio(username)
 
-        # Calculate average purchase price
         total_shares = 0
         total_cost = 0
-
         for stock in user_portfolio:
             if stock["stock_ticker"] == ticker:
                 total_shares += stock["stock_quantity"]
                 total_cost += stock["stock_quantity"] * stock["stock_price"]
 
         avg_cost = total_cost / total_shares
-
         sale_value = current_price * quantity
         cost_basis = avg_cost * quantity
         profit_loss = sale_value - cost_basis
 
-        # Add money to wallet
         st.session_state.wallet_balance += sale_value
         save_wallet_balance()
-
-        # Remove shares
         remove_from_portfolio(username, ticker, quantity)
 
         if profit_loss >= 0:
@@ -352,29 +426,20 @@ def execute_stock_sale(ticker: str, quantity: int) -> bool:
 
 
 def calculate_fifo_sale_preview(username: str, ticker: str, quantity: int):
-    """
-    Simulate FIFO sale and return:
-    (current_price, total_sale_value, total_cost_basis, profit_loss)
-    """
     current_price = get_current_stock_price(ticker)
     user_portfolio = get_user_portfolio(username)
-
-    # Filter ticker
-    purchases = [stock for stock in user_portfolio if stock["stock_ticker"] == ticker]
-
-    # Explicit FIFO sort (oldest first)
-    purchases = sorted(purchases, key=lambda x: x["bought_at"])
+    purchases = sorted(
+        [s for s in user_portfolio if s["stock_ticker"] == ticker],
+        key=lambda x: x["bought_at"],
+    )
 
     remaining = quantity
     total_cost_basis = 0
-
     for stock in purchases:
         if remaining <= 0:
             break
-
         available = stock["stock_quantity"]
         price = stock["stock_price"]
-
         if available <= remaining:
             total_cost_basis += available * price
             remaining -= available
@@ -384,21 +449,18 @@ def calculate_fifo_sale_preview(username: str, ticker: str, quantity: int):
 
     total_sale_value = current_price * quantity
     profit_loss = total_sale_value - total_cost_basis
-
     return current_price, total_sale_value, total_cost_basis, profit_loss
 
 
 @st.dialog("Confirm Sale")
 def confirm_sale_modal(ticker: str, quantity: int):
     username = st.session_state.get("username")
-
     try:
         current_price, sale_value, cost_basis, profit_loss = (
             calculate_fifo_sale_preview(username, ticker, quantity)
         )
 
         st.markdown(f"### Sale Details for **{ticker}**")
-
         col1, col2 = st.columns(2)
 
         with col1:
@@ -408,34 +470,21 @@ def confirm_sale_modal(ticker: str, quantity: int):
 
         with col2:
             st.metric("Cost Basis (FIFO)", f"${cost_basis:,.2f}")
-
             if profit_loss >= 0:
-                st.metric(
-                    "Projected Gain",
-                    f"${profit_loss:,.2f}",
-                    delta="Profit",
-                )
+                st.metric("Projected Gain", f"${profit_loss:,.2f}", delta="Profit")
                 st.success("✅ You are selling at a gain.")
             else:
-                st.metric(
-                    "Projected Loss",
-                    f"${abs(profit_loss):,.2f}",
-                    delta="Loss",
-                )
+                st.metric("Projected Loss", f"${abs(profit_loss):,.2f}", delta="Loss")
                 st.error("⚠️ You are selling at a loss.")
 
         st.divider()
-
         col1, col2 = st.columns(2)
-
         with col1:
-            if st.button("✅ Confirm Sale", use_container_width=True):
+            if st.button("✅ Confirm Sale", width="stretch"):
                 execute_stock_sale(ticker, quantity)
-
         with col2:
-            if st.button("❌ Cancel", use_container_width=True):
+            if st.button("❌ Cancel", width="stretch"):
                 st.rerun()
-
     except Exception as e:
         st.error(f"Error calculating sale preview: {str(e)}")
 
@@ -456,24 +505,21 @@ def display_trading_section(tickers: list):
                 quantity_to_buy = st.number_input(
                     "Enter Quantity to Buy", min_value=1, step=1, value=1
                 )
-                if st.button("Buy", use_container_width=True):
+                if st.button("Buy", width="stretch"):
                     confirm_purchase_modal(stock_to_buy, quantity_to_buy)
             else:
                 st.info("Select stocks above to buy")
+
     with trading_col2:
         with st.container(border=True):
             st.subheader("Sell Stocks")
             user_portfolio = get_user_portfolio(username=st.session_state.username)
             if user_portfolio:
-                # Create a list of owned stocks for selling
                 owned_stocks = {}
                 for stock in user_portfolio:
                     ticker = stock["stock_ticker"]
-                    quantity = stock["stock_quantity"]
-                    if ticker in owned_stocks:
-                        owned_stocks[ticker] += quantity
-                    else:
-                        owned_stocks[ticker] = quantity
+                    qty = stock["stock_quantity"]
+                    owned_stocks[ticker] = owned_stocks.get(ticker, 0) + qty
 
                 stock_to_sell = st.selectbox(
                     "Select Stock to Sell", list(owned_stocks.keys())
@@ -486,8 +532,7 @@ def display_trading_section(tickers: list):
                     step=1,
                     value=1,
                 )
-
-                if st.button("Sell", use_container_width=True):
+                if st.button("Sell", width="stretch"):
                     confirm_sale_modal(stock_to_sell, quantity_to_sell)
             else:
                 st.info("You don't own any stocks to sell yet.")
@@ -497,27 +542,19 @@ def display_trading_section(tickers: list):
             st.subheader("Your Portfolio")
             user_portfolio = get_user_portfolio(username=st.session_state.username)
             if user_portfolio:
-                # condense multiple stocks into one row with quantity and the ticker, no timestamps needed
                 condensed_portfolio = {}
                 for stock in user_portfolio:
                     ticker = stock["stock_ticker"]
-                    quantity = stock["stock_quantity"]
-                    price = stock["stock_price"]
                     if ticker in condensed_portfolio:
-                        condensed_portfolio[ticker]["quantity"] += quantity
+                        condensed_portfolio[ticker]["quantity"] += stock["stock_quantity"]
                     else:
                         condensed_portfolio[ticker] = {
-                            "quantity": quantity,
-                            "price": price,
+                            "quantity": stock["stock_quantity"],
+                            "price": stock["stock_price"],
                         }
-                # show in streamlit just showing the ticker and quantity, but
                 portfolio_data = [
-                    {
-                        "Ticker": ticker,
-                        "Quantity": info["quantity"],
-                        "Price": info["price"],
-                    }
-                    for ticker, info in condensed_portfolio.items()
+                    {"Ticker": t, "Quantity": info["quantity"], "Price": info["price"]}
+                    for t, info in condensed_portfolio.items()
                 ]
                 st.table(portfolio_data)
             else:
@@ -528,10 +565,10 @@ def display_trading_section(tickers: list):
             st.subheader("Recent Transactions")
             user_portfolio = get_user_portfolio(username=st.session_state.username)
             if user_portfolio:
-                # don't show as table, just rows with the ticker, quantity, price, and timestamp
                 for stock in user_portfolio:
                     st.markdown(
-                        f"- Bought **{stock['stock_quantity']}** shares of **{stock['stock_ticker']}** at **${stock['stock_price']:.2f}**"
+                        f"- Bought **{stock['stock_quantity']}** shares of "
+                        f"**{stock['stock_ticker']}** at **${stock['stock_price']:.2f}**"
                     )
             else:
                 st.info("No transactions yet. Buy some stocks to see them here!")
@@ -544,51 +581,41 @@ def display_trading_section(tickers: list):
 
 def main():
     """Main application flow"""
-    # Initialize
     initialize_session_state()
     initialize_tickers_input()
 
-    # Display header
     display_header()
 
-    # Get stock selections
     all_tickers = get_ticker_list()
     tickers, horizon, cols, top_left_cell, right_cell = create_stock_selector(
         all_tickers
     )
 
-    # Normalize tickers
     tickers = [t.upper() for t in tickers]
     update_query_params(tickers)
 
-    # Validate selection
     if not tickers:
         top_left_cell.info("Pick some stocks to compare", icon=":material/info:")
         st.stop()
 
-    # Load and validate data
     try:
         data = load_stock_data(tickers, HORIZON_MAP[horizon])
-    except yf.exceptions.YFRateLimitError as e:
+    except yf.exceptions.YFRateLimitError:
         st.warning("YFinance is rate-limiting us :(\nTry again later.")
         load_stock_data.clear()
         st.stop()
 
-    # Check for errors
     empty_columns = validate_stock_data(data)
     if empty_columns:
         st.error(f"Error loading data for the tickers: {', '.join(empty_columns)}.")
         st.stop()
 
-    # Process data
     normalized = normalize_prices(data)
     max_stock, min_stock = calculate_performance(normalized, tickers)
 
-    # Display comparison section
     display_performance_metrics(cols, max_stock, min_stock)
-    display_comparison_chart(right_cell, normalized)
+    display_comparison_chart(right_cell, normalized, tickers, HORIZON_MAP[horizon])
 
-    # Display trading section
     display_trading_section(tickers)
 
 

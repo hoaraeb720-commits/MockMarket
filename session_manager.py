@@ -1,44 +1,35 @@
-"""Session management for persistent login across page refreshes."""
+"""Session management for persistent login across page refreshes using MongoDB."""
 
-import json
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
+import streamlit as st
+from connections import create_mongodb_connection
 
-SESSION_FILE = Path(".sessions.json")
-SESSION_TIMEOUT_HOURS = 24
-
-
-def _load_sessions() -> dict:
-    """Load all sessions from file."""
-    if SESSION_FILE.exists():
-        with open(SESSION_FILE, "r") as f:
-            return json.load(f)
-    return {}
+SESSION_TIMEOUT_HOURS = 1
 
 
-def _save_sessions(sessions: dict):
-    """Save sessions to file."""
-    with open(SESSION_FILE, "w") as f:
-        json.dump(sessions, f, indent=2)
+@st.cache_resource
+def _get_sessions_collection():
+    """Get the sessions collection from MongoDB."""
+    client = create_mongodb_connection()
+    db = client["mockmarket"]
+    sessions_collection = db["sessions"]
+    
+    # Create TTL index to automatically delete expired sessions
+    sessions_collection.create_index(
+        "created_at",
+        expireAfterSeconds=SESSION_TIMEOUT_HOURS * 3600
+    )
+    
+    return sessions_collection
 
 
 def _cleanup_expired_sessions():
-    """Remove expired sessions from storage."""
-    sessions = _load_sessions()
-    current_time = datetime.now()
-    
-    expired_keys = []
-    for token, data in sessions.items():
-        created_at = datetime.fromisoformat(data["created_at"])
-        if current_time - created_at > timedelta(hours=SESSION_TIMEOUT_HOURS):
-            expired_keys.append(token)
-    
-    for token in expired_keys:
-        del sessions[token]
-    
-    if expired_keys:
-        _save_sessions(sessions)
+    """Remove expired sessions from storage (MongoDB handles this via TTL index)."""
+    sessions_collection = _get_sessions_collection()
+    # MongoDB TTL index automatically handles cleanup, but we can manually delete if needed
+    cutoff_time = datetime.now() - timedelta(hours=SESSION_TIMEOUT_HOURS)
+    sessions_collection.delete_many({"created_at": {"$lt": cutoff_time}})
 
 
 def create_session(username: str) -> str:
@@ -50,17 +41,16 @@ def create_session(username: str) -> str:
     Returns:
         Session token (UUID)
     """
-    _cleanup_expired_sessions()
-    sessions = _load_sessions()
-    
+    sessions_collection = _get_sessions_collection()
     token = str(uuid.uuid4())
-    sessions[token] = {
-        "username": username,
-        "created_at": datetime.now().isoformat(),
-        "wallet_balance": 10000,
-    }
     
-    _save_sessions(sessions)
+    sessions_collection.insert_one({
+        "token": token,
+        "username": username,
+        "created_at": datetime.now(),
+        "wallet_balance": 10000,
+    })
+    
     return token
 
 
@@ -73,14 +63,13 @@ def validate_session(token: str) -> tuple[bool, str | None]:
     Returns:
         Tuple of (is_valid, username)
     """
-    _cleanup_expired_sessions()
-    sessions = _load_sessions()
+    sessions_collection = _get_sessions_collection()
+    session = sessions_collection.find_one({"token": token})
     
-    if token in sessions:
-        data = sessions[token]
-        created_at = datetime.fromisoformat(data["created_at"])
+    if session:
+        created_at = session["created_at"]
         if datetime.now() - created_at <= timedelta(hours=SESSION_TIMEOUT_HOURS):
-            return True, data["username"]
+            return True, session["username"]
     
     return False, None
 
@@ -96,8 +85,12 @@ def get_session_data(token: str) -> dict | None:
     """
     is_valid, username = validate_session(token)
     if is_valid:
-        sessions = _load_sessions()
-        return sessions.get(token)
+        sessions_collection = _get_sessions_collection()
+        session = sessions_collection.find_one({"token": token})
+        if session:
+            # Convert MongoDB ObjectId to string for JSON serialization
+            session.pop("_id", None)
+            return session
     return None
 
 
@@ -108,10 +101,8 @@ def update_session_data(token: str, **kwargs):
         token: The session token
         **kwargs: Fields to update (e.g., wallet_balance=5000)
     """
-    sessions = _load_sessions()
-    if token in sessions:
-        sessions[token].update(kwargs)
-        _save_sessions(sessions)
+    sessions_collection = _get_sessions_collection()
+    sessions_collection.update_one({"token": token}, {"$set": kwargs})
 
 
 def logout_session(token: str):
@@ -120,7 +111,5 @@ def logout_session(token: str):
     Args:
         token: The session token to clear
     """
-    sessions = _load_sessions()
-    if token in sessions:
-        del sessions[token]
-        _save_sessions(sessions)
+    sessions_collection = _get_sessions_collection()
+    sessions_collection.delete_one({"token": token})

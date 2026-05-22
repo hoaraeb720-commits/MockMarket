@@ -1,5 +1,9 @@
 import streamlit as st
+from auth_helper import require_login
 from database import get_all_users_net_worth
+
+# Ensure user is logged in
+require_login()
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Leaderboard", page_icon="🏆", layout="centered")
