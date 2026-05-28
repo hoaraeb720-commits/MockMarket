@@ -4,7 +4,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
-from auth_helper import require_login
+from auth_helper import require_login, clear_session_cookie
 from session_manager import logout_session
 from database import (
     get_user_portfolio,
@@ -141,6 +141,7 @@ Welcome, **{username}**! Compare stocks and manage your trading portfolio."""
     with col2:
         if st.button("Logout", width="stretch"):
             logout_session(st.session_state.session_token)
+            clear_session_cookie()
             st.session_state.logged_in = False
             st.session_state.username = None
             st.session_state.session_token = None

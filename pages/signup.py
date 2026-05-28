@@ -3,6 +3,7 @@ from database import create_user, create_wallet
 from session_manager import create_session
 from profanity_check import check_username
 from constants import INITIAL_BALANCE
+from auth_helper import set_session_cookie
 
 
 def signup_page():
@@ -40,6 +41,7 @@ def signup_page():
                         st.session_state.username = username
                         st.session_state.session_token = token
                         st.session_state.wallet_balance = INITIAL_BALANCE
+                        set_session_cookie(token)
                         st.rerun()
                     else:
                         st.error(message)

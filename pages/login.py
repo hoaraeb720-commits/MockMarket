@@ -2,6 +2,7 @@ import streamlit as st
 from database import verify_user, get_wallet_balance
 from session_manager import create_session
 from constants import INITIAL_BALANCE
+from auth_helper import set_session_cookie
 
 st.set_page_config(
     page_title="MockMarket — Sign In",
@@ -238,6 +239,7 @@ with st.form("login_form"):
                 st.session_state.wallet_balance = (
                     wallet_balance if wallet_balance is not None else INITIAL_BALANCE
                 )
+                set_session_cookie(token)
                 st.success(message)
                 st.rerun()
             else:

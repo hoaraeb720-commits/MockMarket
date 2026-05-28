@@ -11,3 +11,4 @@ wordninja
 torchvision
 loguru
 bcrypt
+extra-streamlit-components
