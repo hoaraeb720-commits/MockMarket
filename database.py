@@ -4,8 +4,12 @@ from datetime import datetime
 from ticker import get_current_stock_price
 from connections import create_mongodb_connection
 
-DATABASE_PATH = "mockmarket.db"
 
+def _get_collection(name: str):
+    """Return a MongoDB collection from the mockmarket database."""
+    client = create_mongodb_connection()
+    db = client["mockmarket"]
+    return db[name]
 
 
 def hash_password(password: str) -> str:
@@ -18,15 +22,13 @@ def create_user(username: str, password: str) -> tuple[bool, str]:
     Create a new user in MongoDB.
     Returns (success, message) tuple.
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    users_collection = db["users"]
+    users = _get_collection("users")
 
-    if users_collection.find_one({"username": username}):
+    if users.find_one({"username": username}):
         return False, "Username already exists. Please choose a different one."
 
     password_hash = hash_password(password)
-    users_collection.insert_one({"username": username, "password_hash": password_hash})
+    users.insert_one({"username": username, "password_hash": password_hash})
     return True, "Account created successfully!"
 
 
@@ -35,11 +37,9 @@ def verify_user(username: str, password: str) -> tuple[bool, str]:
     Verify user credentials in MongoDB.
     Returns (success, message) tuple.
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    users_collection = db["users"]
+    users = _get_collection("users")
 
-    user_doc = users_collection.find_one({"username": username})
+    user_doc = users.find_one({"username": username})
     if user_doc is None:
         return False, "Username not found."
 
@@ -62,14 +62,12 @@ def create_wallet(username: str, initial_funds: float = 10000) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    wallets_collection = db["user_wallets"]
+    wallets = _get_collection("user_wallets")
 
-    if wallets_collection.find_one({"username": username}):
+    if wallets.find_one({"username": username}):
         return False
 
-    wallets_collection.insert_one(
+    wallets.insert_one(
         {"username": username, "current_funds": initial_funds}
     )
     return True
@@ -82,11 +80,9 @@ def get_wallet_balance(username: str) -> float | None:
     Returns:
         Current funds or None if user not found
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    wallets_collection = db["user_wallets"]
+    wallets = _get_collection("user_wallets")
 
-    wallet_doc = wallets_collection.find_one({"username": username})
+    wallet_doc = wallets.find_one({"username": username})
     return wallet_doc["current_funds"] if wallet_doc else None
 
 
@@ -97,11 +93,9 @@ def update_wallet_balance(username: str, new_balance: float) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    wallets_collection = db["user_wallets"]
+    wallets = _get_collection("user_wallets")
 
-    result = wallets_collection.update_one(
+    result = wallets.update_one(
         {"username": username}, {"$set": {"current_funds": new_balance}}
     )
     return result.modified_count > 0
@@ -121,11 +115,9 @@ def add_stock_to_portfolio(
     Returns:
         True if successful, False otherwise
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    portfolio_collection = db["user_portfolio"]
+    portfolio = _get_collection("user_portfolio")
 
-    portfolio_collection.insert_one(
+    portfolio.insert_one(
         {
             "username": username,
             "stock_ticker": stock_ticker,
@@ -144,11 +136,9 @@ def get_user_portfolio(username: str) -> list[dict]:
     Returns:
         List of dictionaries with stock info
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    portfolio_collection = db["user_portfolio"]
+    portfolio = _get_collection("user_portfolio")
 
-    cursor = portfolio_collection.find({"username": username}).sort("bought_at", -1)
+    cursor = portfolio.find({"username": username}).sort("bought_at", -1)
     return [doc for doc in cursor]
 
 
@@ -159,12 +149,10 @@ def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -
     Returns:
         True if successful, False if not enough shares.
     """
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    portfolio_collection = db["user_portfolio"]
+    portfolio = _get_collection("user_portfolio")
 
     # Get all purchases for this user + ticker ordered by oldest first
-    cursor = portfolio_collection.find(
+    cursor = portfolio.find(
         {"username": username, "stock_ticker": ticker}
     ).sort("bought_at", 1)
 
@@ -186,12 +174,12 @@ def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -
 
         if stock_quantity <= remaining_to_sell:
             # Sell entire document
-            portfolio_collection.delete_one({"_id": doc["_id"]})
+            portfolio.delete_one({"_id": doc["_id"]})
             remaining_to_sell -= stock_quantity
         else:
             # Partially reduce document
             new_quantity = stock_quantity - remaining_to_sell
-            portfolio_collection.update_one(
+            portfolio.update_one(
                 {"_id": doc["_id"]}, {"$set": {"stock_quantity": new_quantity}}
             )
             remaining_to_sell = 0
@@ -200,36 +188,45 @@ def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -
 
 
 def calculate_net_worth(username: str) -> float:
-    mongodb_client = create_mongodb_connection()
-    db = mongodb_client["mockmarket"]
-    wallet_funds = list(db["user_wallets"].find({"username": username}))[0][
-        "current_funds"
-    ]
+    wallet_funds = get_wallet_balance(username)
+    if wallet_funds is None:
+        wallet_funds = 0.0
 
-    user_portfolio_data = list(db["user_portfolio"].find({"username": username}))
-    list_of_tickers = [
-        {
-            "ticker_symbol": portfolio["stock_ticker"],
-            "quantity": portfolio["stock_quantity"],
-        }
-        for portfolio in user_portfolio_data
-    ]
-    stock_price_for_tickers = [
-        get_current_stock_price(ticker=ticker["ticker_symbol"]) * ticker["quantity"]
-        for ticker in list_of_tickers
-    ]
-    return sum(stock_price_for_tickers) + wallet_funds
+    portfolio = _get_collection("user_portfolio")
+    user_portfolio_data = list(portfolio.find({"username": username}))
+    stock_value = sum(
+        get_current_stock_price(ticker=doc["stock_ticker"]) * doc["stock_quantity"]
+        for doc in user_portfolio_data
+    )
+    return stock_value + wallet_funds
+
 
 def get_all_users_net_worth() -> list[dict]:
-    client = create_mongodb_connection()
-    db = client["mockmarket"]
-    users_collection = db["users"]
+    users = _get_collection("users")
 
-    users = list(users_collection.find())
+    all_users = list(users.find())
     net_worth_list = []
-    for user in users:
+    for user in all_users:
         username = user["username"]
         net_worth = calculate_net_worth(username)
         net_worth_list.append({"username": username, "net_worth": net_worth})
 
     return net_worth_list
+
+
+def get_aggregated_portfolio(username: str) -> dict[str, dict]:
+    """Get portfolio grouped by ticker with summed quantities and average price."""
+    raw = get_user_portfolio(username)
+    agg: dict[str, dict] = {}
+    for stock in raw:
+        ticker = stock["stock_ticker"]
+        qty = stock["stock_quantity"]
+        price = stock["stock_price"]
+        if ticker in agg:
+            prev_qty = agg[ticker]["quantity"]
+            prev_total = agg[ticker]["avg_price"] * prev_qty
+            agg[ticker]["quantity"] = prev_qty + qty
+            agg[ticker]["avg_price"] = (prev_total + price * qty) / (prev_qty + qty)
+        else:
+            agg[ticker] = {"quantity": qty, "avg_price": price}
+    return agg
