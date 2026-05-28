@@ -1,4 +1,4 @@
-import hashlib
+import bcrypt
 from datetime import datetime
 
 from ticker import get_current_stock_price
@@ -13,15 +13,40 @@ def _get_collection(name: str):
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify a password against a stored hash.
+
+    Supports bcrypt hashes and auto-migrates legacy SHA-256 hashes.
+    """
+    # Try bcrypt first
+    try:
+        if bcrypt.checkpw(password.encode(), stored_hash.encode()):
+            return True
+    except (ValueError, TypeError):
+        pass
+
+    # Fallback: check legacy SHA-256 hash
+    import hashlib
+    sha256_hash = hashlib.sha256(password.encode()).hexdigest()
+    if sha256_hash == stored_hash:
+        # Auto-migrate to bcrypt
+        new_hash = hash_password(password)
+        users = _get_collection("users")
+        users.update_one(
+            {"password_hash": stored_hash},
+            {"$set": {"password_hash": new_hash}},
+        )
+        return True
+
+    return False
 
 
 def create_user(username: str, password: str) -> tuple[bool, str]:
-    """
-    Create a new user in MongoDB.
-    Returns (success, message) tuple.
-    """
+    """Create a new user in MongoDB."""
     users = _get_collection("users")
 
     if users.find_one({"username": username}):
@@ -33,18 +58,14 @@ def create_user(username: str, password: str) -> tuple[bool, str]:
 
 
 def verify_user(username: str, password: str) -> tuple[bool, str]:
-    """
-    Verify user credentials in MongoDB.
-    Returns (success, message) tuple.
-    """
+    """Verify user credentials in MongoDB."""
     users = _get_collection("users")
 
     user_doc = users.find_one({"username": username})
     if user_doc is None:
         return False, "Username not found."
 
-    password_hash = hash_password(password)
-    if user_doc["password_hash"] == password_hash:
+    if verify_password(password, user_doc["password_hash"]):
         return True, "Login successful!"
     else:
         return False, "Incorrect password."

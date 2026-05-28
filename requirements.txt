@@ -10,3 +10,4 @@ torch
 wordninja
 torchvision
 loguru
+bcrypt
