@@ -24,14 +24,6 @@ def _get_sessions_collection():
     return sessions_collection
 
 
-def _cleanup_expired_sessions():
-    """Remove expired sessions from storage (MongoDB handles this via TTL index)."""
-    sessions_collection = _get_sessions_collection()
-    # MongoDB TTL index automatically handles cleanup, but we can manually delete if needed
-    cutoff_time = datetime.now() - timedelta(hours=SESSION_TIMEOUT_HOURS)
-    sessions_collection.delete_many({"created_at": {"$lt": cutoff_time}})
-
-
 def create_session(username: str) -> str:
     """Create a new session token for a user.
     
@@ -72,37 +64,6 @@ def validate_session(token: str) -> tuple[bool, str | None]:
             return True, session["username"]
     
     return False, None
-
-
-def get_session_data(token: str) -> dict | None:
-    """Get session data including wallet balance.
-    
-    Args:
-        token: The session token
-        
-    Returns:
-        Session data dict or None if invalid
-    """
-    is_valid, username = validate_session(token)
-    if is_valid:
-        sessions_collection = _get_sessions_collection()
-        session = sessions_collection.find_one({"token": token})
-        if session:
-            # Convert MongoDB ObjectId to string for JSON serialization
-            session.pop("_id", None)
-            return session
-    return None
-
-
-def update_session_data(token: str, **kwargs):
-    """Update session data.
-    
-    Args:
-        token: The session token
-        **kwargs: Fields to update (e.g., wallet_balance=5000)
-    """
-    sessions_collection = _get_sessions_collection()
-    sessions_collection.update_one({"token": token}, {"$set": kwargs})
 
 
 def logout_session(token: str):

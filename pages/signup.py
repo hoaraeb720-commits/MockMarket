@@ -2,6 +2,7 @@ import streamlit as st
 from database import create_user, create_wallet
 from session_manager import create_session
 from profanity_check import check_username
+from constants import INITIAL_BALANCE
 
 
 def signup_page():
@@ -38,9 +39,7 @@ def signup_page():
                         st.session_state.logged_in = True
                         st.session_state.username = username
                         st.session_state.session_token = token
-                        st.session_state.wallet_balance = 10000
-                        # Add token to URL so it persists across refreshes
-                        st.query_params["session_token"] = token
+                        st.session_state.wallet_balance = INITIAL_BALANCE
                         st.rerun()
                     else:
                         st.error(message)
