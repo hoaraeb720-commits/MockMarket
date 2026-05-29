@@ -18,31 +18,28 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against a stored hash.
-
-    Supports bcrypt hashes and auto-migrates legacy SHA-256 hashes.
-    """
-    # Try bcrypt first
+    """Check password against bcrypt hash. Returns True/False only."""
+    # BUG 7 FIX: No longer performs migration here (avoids wrong-document update
+    # when two users share the same legacy hash). Migration is done in verify_user
+    # where the username is in scope.
     try:
         if bcrypt.checkpw(password.encode(), stored_hash.encode()):
             return True
     except (ValueError, TypeError):
         pass
 
-    # Fallback: check legacy SHA-256 hash
+    # Fallback check for legacy SHA-256
     import hashlib
-    sha256_hash = hashlib.sha256(password.encode()).hexdigest()
-    if sha256_hash == stored_hash:
-        # Auto-migrate to bcrypt
-        new_hash = hash_password(password)
-        users = _get_collection("users")
-        users.update_one(
-            {"password_hash": stored_hash},
-            {"$set": {"password_hash": new_hash}},
-        )
-        return True
+    return hashlib.sha256(password.encode()).hexdigest() == stored_hash
 
-    return False
+
+def _migrate_to_bcrypt(username: str, password: str) -> None:
+    """Re-hash a verified password with bcrypt and persist."""
+    users = _get_collection("users")
+    users.update_one(
+        {"username": username},
+        {"$set": {"password_hash": hash_password(password)}},
+    )
 
 
 def create_user(username: str, password: str) -> tuple[bool, str]:
@@ -65,10 +62,15 @@ def verify_user(username: str, password: str) -> tuple[bool, str]:
     if user_doc is None:
         return False, "Username not found."
 
-    if verify_password(password, user_doc["password_hash"]):
-        return True, "Login successful!"
-    else:
+    if not verify_password(password, user_doc["password_hash"]):
         return False, "Incorrect password."
+
+    # BUG 7 FIX: Auto-migrate legacy SHA-256 hashes to bcrypt using username
+    # as the filter, so only the correct document is updated.
+    if not user_doc["password_hash"].startswith("$2"):
+        _migrate_to_bcrypt(username, password)
+
+    return True, "Login successful!"
 
 
 # ============================================================================
@@ -215,10 +217,15 @@ def calculate_net_worth(username: str) -> float:
 
     portfolio = _get_collection("user_portfolio")
     user_portfolio_data = list(portfolio.find({"username": username}))
-    stock_value = sum(
-        get_current_stock_price(ticker=doc["stock_ticker"]) * doc["stock_quantity"]
-        for doc in user_portfolio_data
-    )
+    # BUG 6 FIX: Wrap price lookup in try/except so a delisted or bad ticker
+    # doesn't crash the leaderboard for all users. Treat bad tickers as $0.
+    stock_value = 0.0
+    for doc in user_portfolio_data:
+        try:
+            price = get_current_stock_price(ticker=doc["stock_ticker"])
+        except Exception:
+            price = 0.0
+        stock_value += price * doc["stock_quantity"]
     return stock_value + wallet_funds
 
 

@@ -1,192 +1,214 @@
+import html as html_lib  # BUG 5 FIX: escape usernames before rendering as HTML
 import streamlit as st
 from auth_helper import require_login
 from database import get_all_users_net_worth
+from styles import apply_theme, app_nav
 
-# Ensure user is logged in
 require_login()
 
-# ── Page config ──────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Leaderboard", page_icon="🏆", layout="centered")
+st.set_page_config(page_title="Leaderboard · MockMarket", page_icon="🏆", layout="wide")
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
-st.markdown("""
+apply_theme()
+
+st.markdown(
+    """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap');
-
-/* ── Global reset ── */
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-    background-color: #0d0f14 !important;
-    color: #e8eaf0;
-}
-
-.main .block-container {
-    padding-top: 3.5rem;
-    padding-bottom: 4rem;
-    max-width: 780px;
-}
-
-/* ── Header ── */
-.lb-header {
-    text-align: center;
-    margin-bottom: 3rem;
-    padding: 1rem 0 0.5rem;
-}
-
-.lb-header h1 {
-    font-family: 'Syne', sans-serif;
-    font-size: 3.5rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    margin: 0;
-    background: linear-gradient(135deg, #f5c842 0%, #f09b2f 60%, #e8774a 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.lb-header p {
-    color: #6b7280;
-    font-size: 0.95rem;
-    font-weight: 300;
-    margin: 0.6rem 0 0;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-}
-
-/* ── Card ── */
-.lb-card {
-    display: flex;
-    align-items: center;
-    gap: 1.4rem;
-    background: #161920;
-    border: 1px solid #1e2330;
-    border-radius: 16px;
-    padding: 1.3rem 1.8rem;
-    margin-bottom: 0.85rem;
-    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-    cursor: default;
-}
-
-.lb-card:hover {
-    transform: translateX(4px);
-    border-color: #2e3650;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.35);
-}
-
-/* ── Top-3 special cards ── */
-.lb-card.rank-1 { border-color: #c9a227; background: linear-gradient(135deg, #1a1710 0%, #161920 60%); }
-.lb-card.rank-2 { border-color: #7a8fa6; background: linear-gradient(135deg, #111519 0%, #161920 60%); }
-.lb-card.rank-3 { border-color: #7c5c3b; background: linear-gradient(135deg, #12100e 0%, #161920 60%); }
-
-/* ── Rank badge ── */
-.lb-rank {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 800;
-    min-width: 2.8rem;
-    text-align: center;
-    color: #3a4155;
-}
-.rank-1 .lb-rank { color: #f5c842; font-size: 1.7rem; }
-.rank-2 .lb-rank { color: #a8bfd4; font-size: 1.55rem; }
-.rank-3 .lb-rank { color: #c9835a; font-size: 1.4rem; }
-
-/* ── Avatar ── */
-.lb-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 1.05rem;
-    flex-shrink: 0;
-    background: #1e2330;
-    color: #6b7280;
-}
-.rank-1 .lb-avatar { background: linear-gradient(135deg, #c9a227, #f5c842); color: #0d0f14; }
-.rank-2 .lb-avatar { background: linear-gradient(135deg, #6b8090, #a8bfd4); color: #0d0f14; }
-.rank-3 .lb-avatar { background: linear-gradient(135deg, #7c5c3b, #c9835a); color: #0d0f14; }
-
-/* ── Username ── */
-.lb-name {
-    flex: 1;
-    font-weight: 500;
-    font-size: 1.1rem;
-    color: #d1d5e0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.rank-1 .lb-name, .rank-2 .lb-name, .rank-3 .lb-name {
-    color: #eef0f6;
-    font-weight: 500;
-}
-
-/* ── Net worth ── */
-.lb-value {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 1.15rem;
-    color: #4ade80;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
-}
-
-/* ── Divider between top3 and rest ── */
-.lb-divider {
-    text-align: center;
-    color: #2e3650;
-    font-size: 0.75rem;
+.lb-hero { margin-bottom: 2.4rem; }
+.lb-hero-eyebrow {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.7rem;
+    color: #555;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    margin: 1.6rem 0 1.2rem;
+    margin-bottom: 0.5rem;
+}
+.lb-hero-title {
+    font-family: 'Geist', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+    color: #f2f2f2;
+    letter-spacing: -0.025em;
+    margin: 0 0 0.4rem 0;
+}
+.lb-hero-sub {
+    font-family: 'Geist', sans-serif;
+    font-size: 0.95rem;
+    color: #666;
+    margin-bottom: 2rem;
 }
 
-/* ── Stats row ── */
 .lb-stats {
-    display: flex;
-    gap: 1.2rem;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
     margin-bottom: 2.5rem;
 }
 .lb-stat {
-    flex: 1;
-    background: #161920;
-    border: 1px solid #1e2330;
+    background: linear-gradient(180deg, #0a0a0a 0%, #060606 100%);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 14px;
-    padding: 1.2rem 1.2rem;
-    text-align: center;
+    padding: 1.4rem 1.6rem;
 }
 .lb-stat-label {
-    font-size: 0.72rem;
-    text-transform: uppercase;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.68rem;
+    color: #555;
     letter-spacing: 0.1em;
-    color: #4b5568;
-    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    margin-bottom: 0.7rem;
 }
 .lb-stat-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #c9a227;
+    font-family: 'Geist', sans-serif;
+    font-size: 1.7rem;
+    font-weight: 600;
+    color: #f2f2f2;
+    letter-spacing: -0.025em;
+    line-height: 1;
+}
+.lb-stat-value.accent { color: #00C805; }
+
+.lb-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 4rem;
+}
+.lb-row {
+    display: grid;
+    grid-template-columns: 50px 50px 1fr auto;
+    align-items: center;
+    gap: 1.2rem;
+    background: #080808;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 1rem 1.4rem;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.lb-row:hover {
+    border-color: rgba(0,200,5,0.18);
+    background: #0c0c0c;
+    transform: translateX(2px);
+}
+.lb-row.rank-1 {
+    background: linear-gradient(90deg, rgba(0,200,5,0.06) 0%, #080808 60%);
+    border-color: rgba(0,200,5,0.25);
+}
+.lb-row.rank-2 {
+    background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, #080808 60%);
+    border-color: rgba(255,255,255,0.12);
+}
+.lb-row.rank-3 {
+    background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, #080808 60%);
+    border-color: rgba(255,255,255,0.08);
+}
+
+.lb-rank {
+    font-family: 'Geist Mono', monospace;
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: #444;
+    text-align: center;
+}
+.lb-row.rank-1 .lb-rank { color: #00C805; font-size: 1.4rem; font-weight: 600; }
+.lb-row.rank-2 .lb-rank { color: #d0d0d0; font-size: 1.2rem; font-weight: 600; }
+.lb-row.rank-3 .lb-rank { color: #b8b8b8; font-size: 1.1rem; font-weight: 600; }
+
+.lb-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #888;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+.lb-row.rank-1 .lb-avatar {
+    background: linear-gradient(135deg, #00C805 0%, #009804 100%);
+    color: #001a01;
+    border-color: rgba(0,200,5,0.3);
+    box-shadow: 0 4px 14px rgba(0,200,5,0.25);
+}
+.lb-row.rank-2 .lb-avatar {
+    background: linear-gradient(135deg, #f0f0f0 0%, #b0b0b0 100%);
+    color: #0a0a0a;
+}
+.lb-row.rank-3 .lb-avatar {
+    background: linear-gradient(135deg, #c8a070 0%, #8a6840 100%);
+    color: #0a0a0a;
+}
+
+.lb-name {
+    font-family: 'Geist', sans-serif;
+    font-weight: 500;
+    font-size: 1rem;
+    color: #d8d8d8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lb-row.rank-1 .lb-name,
+.lb-row.rank-2 .lb-name,
+.lb-row.rank-3 .lb-name { color: #f2f2f2; font-weight: 600; }
+
+.lb-name .you-tag {
+    color: #00C805;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.7rem;
+    margin-left: 0.4rem;
+    letter-spacing: 0.08em;
+    background: rgba(0,200,5,0.08);
+    padding: 0.18rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid rgba(0,200,5,0.2);
+}
+
+.lb-value {
+    font-family: 'Geist', sans-serif;
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: #00C805;
+    letter-spacing: -0.015em;
+    text-align: right;
+}
+.lb-row.rank-1 .lb-value { font-size: 1.2rem; }
+
+.lb-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    color: #333;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 1.4rem 0 0.6rem;
+}
+.lb-divider::before, .lb-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.05);
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
+app_nav(active="leaderboard")
 
-# ── Helper ────────────────────────────────────────────────────────────────────
-MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
 
 def fmt_money(value: float) -> str:
-    """Format large numbers with K/M suffixes."""
     if value >= 1_000_000:
-        return f"${value/1_000_000:.2f}M"
+        return f"${value / 1_000_000:.2f}M"
     if value >= 1_000:
-        return f"${value/1_000:.2f}K"
+        return f"${value / 1_000:.2f}K"
     return f"${value:.2f}"
+
 
 def initials(username: str) -> str:
     parts = username.split()
@@ -194,68 +216,79 @@ def initials(username: str) -> str:
         return (parts[0][0] + parts[-1][0]).upper()
     return username[:2].upper()
 
-def rank_class(rank: int) -> str:
-    return f"rank-{rank}" if rank <= 3 else ""
 
-
-# ── Data ──────────────────────────────────────────────────────────────────────
 def display_leaderboard():
     net_worth_data = get_all_users_net_worth()
-    sorted_data = sorted(net_worth_data, key=lambda x: x["net_worth"], reverse=True)
+    sorted_data = sorted(
+        net_worth_data, key=lambda x: x["net_worth"], reverse=True
+    )
 
-    # Header
-    st.markdown("""
-        <div class="lb-header">
-            <h1>🏆 Leaderboard</h1>
-            <p>Ranked by net worth</p>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+<div class="lb-hero">
+  <div class="lb-hero-eyebrow">— Rankings</div>
+  <div class="lb-hero-title">Leaderboard</div>
+  <div class="lb-hero-sub">Top traders by net worth. Where do you stand?</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
     if not sorted_data:
         st.info("No data available yet.")
         return
 
-    # Summary stats
     total_players = len(sorted_data)
     top_nw = sorted_data[0]["net_worth"]
     avg_nw = sum(u["net_worth"] for u in sorted_data) / total_players
 
-    st.markdown(f"""
-        <div class="lb-stats">
-            <div class="lb-stat">
-                <div class="lb-stat-label">Players</div>
-                <div class="lb-stat-value">{total_players}</div>
-            </div>
-            <div class="lb-stat">
-                <div class="lb-stat-label">Top Net Worth</div>
-                <div class="lb-stat-value">{fmt_money(top_nw)}</div>
-            </div>
-            <div class="lb-stat">
-                <div class="lb-stat-label">Average</div>
-                <div class="lb-stat-value">{fmt_money(avg_nw)}</div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"""
+<div class="lb-stats">
+  <div class="lb-stat">
+    <div class="lb-stat-label">Total players</div>
+    <div class="lb-stat-value">{total_players}</div>
+  </div>
+  <div class="lb-stat">
+    <div class="lb-stat-label">Top net worth</div>
+    <div class="lb-stat-value accent">{fmt_money(top_nw)}</div>
+  </div>
+  <div class="lb-stat">
+    <div class="lb-stat-label">Average</div>
+    <div class="lb-stat-value">{fmt_money(avg_nw)}</div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
-    # Rows
+    rows_html = []
+    current_user = st.session_state.get("username", "")
     for rank, user in enumerate(sorted_data, start=1):
-        rc = rank_class(rank)
-        badge = MEDAL.get(rank, f"#{rank}")
-        av = initials(user["username"])
-        name = user["username"]
+        rc = f"rank-{rank}" if rank <= 3 else ""
+        av = html_lib.escape(initials(user["username"]))
+        name = html_lib.escape(user["username"])
+        if user["username"] == current_user:
+            name = f'{name}<span class="you-tag">YOU</span>'
         value = fmt_money(user["net_worth"])
+        rank_display = f"#{rank:02d}" if rank > 3 else f"#{rank}"
 
         if rank == 4:
-            st.markdown('<div class="lb-divider">─── Rest of the field ───</div>', unsafe_allow_html=True)
+            rows_html.append('<div class="lb-divider">Rest of the field</div>')
 
-        st.markdown(f"""
-            <div class="lb-card {rc}">
-                <div class="lb-rank">{badge}</div>
-                <div class="lb-avatar">{av}</div>
-                <div class="lb-name">{name}</div>
-                <div class="lb-value">{value}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        rows_html.append(
+            f'<div class="lb-row {rc}">'
+            f'<div class="lb-rank">{rank_display}</div>'
+            f'<div class="lb-avatar">{av}</div>'
+            f'<div class="lb-name">{name}</div>'
+            f'<div class="lb-value">{value}</div>'
+            f"</div>"
+        )
+
+    st.markdown(
+        f'<div class="lb-list">{"".join(rows_html)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 display_leaderboard()

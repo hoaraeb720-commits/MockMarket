@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 from connections import create_mongodb_connection
 
-SESSION_TIMEOUT_HOURS = 1
+SESSION_TIMEOUT_HOURS = 24
 
 
 @st.cache_resource

@@ -4,8 +4,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
-from auth_helper import require_login, clear_session_cookie
-from session_manager import logout_session
+from auth_helper import require_login
 from database import (
     get_user_portfolio,
     get_aggregated_portfolio,
@@ -13,6 +12,7 @@ from database import (
 )
 from ticker import get_current_stock_price, load_stock_data
 from trading import confirm_purchase_modal, confirm_sale_modal
+from styles import apply_theme, app_nav
 
 # Ensure user is logged in
 require_login()
@@ -26,6 +26,8 @@ st.set_page_config(
     page_icon=":chart_with_upwards_trend:",
     layout="wide",
 )
+
+apply_theme()
 
 DEFAULT_STOCKS = ["AAPL", "MSFT", "GOOGL", "NVDA", "AMZN", "TSLA"]
 HORIZON_MAP = {
@@ -83,11 +85,10 @@ def initialize_session_state():
 
 
 def initialize_tickers_input():
-    """Initialize ticker selection from query params or use defaults"""
+    """Initialize ticker selection from query params or use defaults."""
     if "tickers_input" not in st.session_state:
-        st.session_state.tickers_input = st.query_params.get(
-            "stocks", tickers_to_str(DEFAULT_STOCKS)
-        ).split(",")
+        raw = st.query_params.get("stocks", tickers_to_str(DEFAULT_STOCKS)).split(",")
+        st.session_state.tickers_input = [t.strip().upper() for t in raw if t.strip()]
 
 
 def update_query_params(tickers: list):
@@ -109,14 +110,19 @@ def validate_stock_data(data: pd.DataFrame) -> list:
 
 
 def normalize_prices(data: pd.DataFrame) -> pd.DataFrame:
-    """Normalize prices so they start at 1 for comparison"""
-    return data.div(data.iloc[0])
+    """Normalize prices so each starts at 1 for comparison.
+
+    Uses each column's first non-NaN value so recent IPOs don't blank out.
+    """
+    return data.apply(lambda col: col / col.dropna().iloc[0] if col.notna().any() else col)
 
 
 def calculate_performance(normalized: pd.DataFrame, tickers: list) -> tuple:
-    """Calculate best and worst performing stocks"""
-    latest_norm_values = {normalized[ticker].iat[-1]: ticker for ticker in tickers}
-    return max(latest_norm_values.items()), min(latest_norm_values.items())
+    """Calculate best and worst performing stocks."""
+    pairs = [(normalized[ticker].iat[-1], ticker) for ticker in tickers]
+    max_pair = max(pairs, key=lambda p: p[0])
+    min_pair = min(pairs, key=lambda p: p[0])
+    return max_pair, min_pair
 
 
 # ============================================================================
@@ -125,34 +131,127 @@ def calculate_performance(normalized: pd.DataFrame, tickers: list) -> tuple:
 
 
 def display_header():
-    """Display dashboard header with welcome message and wallet balance"""
+    """Display dashboard header — top nav, hero stats, and logout."""
+    app_nav(active="dashboard")
+
     username = st.session_state.get("username", "User")
     balance = st.session_state.wallet_balance
-
-    col1, col2 = st.columns([0.85, 0.15])
-
-    with col1:
-        st.markdown(
-            f"""# :material/query_stats: Stock Comparison Dashboard
-
-Welcome, **{username}**! Compare stocks and manage your trading portfolio."""
-        )
-
-    with col2:
-        if st.button("Logout", width="stretch"):
-            logout_session(st.session_state.session_token)
-            clear_session_cookie()
-            st.session_state.logged_in = False
-            st.session_state.username = None
-            st.session_state.session_token = None
-            st.rerun()
-
-    st.write(f"**Wallet Balance:** ${balance:,.2f}")
-
-    username = st.session_state.get("username")
     net_worth = calculate_net_worth(username=username)
-    st.write(f"**Net Worth:** ${net_worth:,.2f}")
-    ""  # Add spacing
+    pnl_pct = (net_worth - 10000) / 10000 * 100
+
+    pnl_color = "accent-green" if pnl_pct >= 0 else "accent-red"
+    arrow = "↑" if pnl_pct >= 0 else "↓"
+
+    st.markdown(
+        f"""
+<style>
+.dash-hero {{
+    margin-bottom: 2.4rem;
+}}
+.dash-hero-eyebrow {{
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.7rem;
+    color: #555;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}}
+.dash-hero-title {{
+    font-family: 'Geist', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+    color: #f2f2f2;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin-bottom: 0.4rem;
+}}
+.dash-hero-sub {{
+    font-family: 'Geist', sans-serif;
+    font-size: 0.95rem;
+    color: #666;
+    margin-bottom: 2rem;
+}}
+.dash-stats-row {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}}
+.dash-stat {{
+    background: linear-gradient(180deg, #0a0a0a 0%, #060606 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 1.4rem 1.6rem;
+    position: relative;
+    overflow: hidden;
+}}
+.dash-stat::before {{
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+}}
+.dash-stat-label {{
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.68rem;
+    color: #555;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.7rem;
+}}
+.dash-stat-value {{
+    font-family: 'Geist', sans-serif;
+    font-size: 1.7rem;
+    font-weight: 600;
+    color: #f2f2f2;
+    letter-spacing: -0.025em;
+    line-height: 1;
+}}
+.dash-stat-delta {{
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    margin-top: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.18rem 0.5rem;
+    border-radius: 5px;
+}}
+.dash-stat-delta.accent-green {{
+    color: #00C805;
+    background: rgba(0,200,5,0.08);
+}}
+.dash-stat-delta.accent-red {{
+    color: #ff5050;
+    background: rgba(255,80,80,0.08);
+}}
+</style>
+<div class="dash-hero">
+  <div class="dash-hero-eyebrow">— Welcome back, {username}</div>
+  <div class="dash-hero-title">Your portfolio at a glance</div>
+  <div class="dash-hero-sub">Live market data, $10,000 starting capital, zero real-world risk.</div>
+  <div class="dash-stats-row">
+    <div class="dash-stat">
+      <div class="dash-stat-label">Wallet balance</div>
+      <div class="dash-stat-value">${balance:,.2f}</div>
+      <div class="dash-stat-delta accent-green" style="background:transparent;color:#555;padding:0;">Available to trade</div>
+    </div>
+    <div class="dash-stat">
+      <div class="dash-stat-label">Net worth</div>
+      <div class="dash-stat-value">${net_worth:,.2f}</div>
+      <div class="dash-stat-delta {pnl_color}">{arrow} {abs(pnl_pct):.2f}%</div>
+    </div>
+    <div class="dash-stat">
+      <div class="dash-stat-label">Total return</div>
+      <div class="dash-stat-value" style="color:{'#00C805' if pnl_pct >= 0 else '#ff5050'};">${net_worth - 10000:+,.2f}</div>
+      <div class="dash-stat-delta accent-green" style="background:transparent;color:#555;padding:0;">Since signup</div>
+    </div>
+  </div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 
 def create_stock_selector(all_tickers: list) -> tuple:
@@ -166,7 +265,7 @@ def create_stock_selector(all_tickers: list) -> tuple:
     with top_left_cell:
         tickers = st.multiselect(
             "Stock tickers",
-            options=set(all_tickers) | set(st.session_state.tickers_input),
+            options=sorted(set(all_tickers) | set(st.session_state.tickers_input)),
             default=st.session_state.tickers_input,
             placeholder="Choose stocks to compare",
             accept_new_options=True,

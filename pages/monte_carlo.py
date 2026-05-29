@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import altair as alt
 from auth_helper import require_login
+from styles import apply_theme, app_nav
 
 # Ensure user is logged in
 require_login()
@@ -15,10 +16,13 @@ require_login()
 # ============================================================================
 
 st.set_page_config(
-    page_title="Monte Carlo · Stock Simulator",
+    page_title="Monte Carlo · MockMarket",
     page_icon="📈",
     layout="wide",
 )
+
+apply_theme()
+app_nav(active="monte_carlo")
 
 
 # ============================================================================
@@ -42,6 +46,11 @@ def fetch_data(ticker: str, years: int = 2) -> pd.DataFrame:
 def compute_gbm_params(prices: pd.Series) -> tuple:
     """Estimate µ (drift) and σ (volatility) from log returns."""
     log_ret = np.log(prices / prices.shift(1)).dropna()
+    if len(log_ret) < 2:
+        raise ValueError(
+            f"Need at least 2 valid return observations to estimate drift/volatility "
+            f"(got {len(log_ret)}). Try a wider date range or different ticker."
+        )
     mu = log_ret.mean()
     sigma = log_ret.std()
     return float(mu), float(sigma)
@@ -263,10 +272,16 @@ def build_distribution_chart(paths: np.ndarray, percentiles: list) -> alt.Chart:
 # Main Content
 # ============================================================================
 
-st.title("Monte Carlo Simulation")
-st.caption("GBM Stock Price Simulator")
-
-st.divider()
+st.markdown(
+    """
+<div style="margin-bottom: 2rem;">
+  <div style="font-family:'Geist Mono',monospace;font-size:0.7rem;color:#555;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.5rem;">— Geometric Brownian Motion</div>
+  <div style="font-family:'Geist',sans-serif;font-size:2rem;font-weight:600;color:#f2f2f2;letter-spacing:-0.025em;line-height:1.05;margin-bottom:0.4rem;">Monte Carlo simulation</div>
+  <div style="font-family:'Geist',sans-serif;font-size:0.95rem;color:#666;">Simulate thousands of price paths calibrated to historical log-returns.</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # Parameters
 st.markdown("## Parameters")
@@ -339,7 +354,11 @@ if hist.empty:
     st.stop()
 
 # ── Compute parameters ────────────────────────────────────────────────────────
-mu, sigma = compute_gbm_params(hist["close"])
+try:
+    mu, sigma = compute_gbm_params(hist["close"])
+except ValueError as e:
+    st.error(str(e))
+    st.stop()
 last_price = float(hist["close"].iloc[-1])
 ann_ret = mu * 252
 ann_vol = sigma * np.sqrt(252)

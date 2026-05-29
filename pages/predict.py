@@ -10,6 +10,7 @@ import streamlit as st
 from prophet import Prophet
 import yfinance as yf
 from auth_helper import require_login
+from styles import apply_theme, app_nav
 
 # Ensure user is logged in
 require_login()
@@ -18,13 +19,24 @@ require_login()
 # PAGE CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Stock Forecast",
+    page_title="Forecast · MockMarket",
     page_icon="📈",
     layout="wide",
 )
 
-st.title("📈 Prophet Stock Forecast")
-st.caption("Powered by Facebook Prophet · NYSE holidays · Volume regressor")
+apply_theme()
+app_nav(active="predict")
+
+st.markdown(
+    """
+<div style="margin-bottom: 2rem;">
+  <div style="font-family:'Geist Mono',monospace;font-size:0.7rem;color:#555;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.5rem;">— Prophet model</div>
+  <div style="font-family:'Geist',sans-serif;font-size:2rem;font-weight:600;color:#f2f2f2;letter-spacing:-0.025em;line-height:1.05;margin-bottom:0.4rem;">Forecast a ticker</div>
+  <div style="font-family:'Geist',sans-serif;font-size:0.95rem;color:#666;">Facebook Prophet · NYSE holidays · Volume regressor.</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ─────────────────────────────────────────────
 # INPUTS — MAIN AREA
@@ -338,12 +350,22 @@ def plot_holidays(forecast, holiday_df):
 # MAIN
 # ─────────────────────────────────────────────
 if run_btn:
+    if start_date >= end_date:
+        st.error("Start date must be before end date.")
+        st.stop()
     with st.spinner(f"Downloading {ticker}…"):
         df = load_data(ticker, str(start_date), str(end_date))
 
     if df.empty:
         st.error(
             f"❌ No data found for **{ticker}**. Check the ticker symbol and date range."
+        )
+        st.stop()
+
+    if len(df) < 60:
+        st.error(
+            f"Need at least 60 trading days of data to fit the model — got {len(df)}. "
+            "Try a wider date range."
         )
         st.stop()
 

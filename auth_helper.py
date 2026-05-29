@@ -114,3 +114,4 @@ def _clear_session_state() -> None:
     st.session_state.logged_in = False
     st.session_state.username = None
     st.session_state.session_token = None
+    st.session_state.wallet_balance = INITIAL_BALANCE
