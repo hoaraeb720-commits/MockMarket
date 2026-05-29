@@ -188,11 +188,31 @@ def log_transaction(
 
 
 def get_recent_transactions(username: str, limit: int = 8) -> list[dict]:
-    """Return the most recent transactions (buys + sells) for a user."""
+    """Return the most recent transactions (buys + sells) for a user.
+
+    Falls back to portfolio entries when the transactions log is empty so
+    legacy holdings (created before the log existed) still appear.
+    """
     username = username.strip().lower()
     txns = _get_collection("transactions")
-    cursor = txns.find({"username": username}).sort("at", -1).limit(limit)
-    return list(cursor)
+    rows = list(txns.find({"username": username}).sort("at", -1).limit(limit))
+    if rows:
+        return rows
+
+    # Fallback: synthesize BUY entries from the user's portfolio
+    portfolio = _get_collection("user_portfolio")
+    cursor = portfolio.find({"username": username}).sort("bought_at", -1).limit(limit)
+    return [
+        {
+            "kind": "BUY",
+            "stock_ticker": p["stock_ticker"],
+            "stock_quantity": p["stock_quantity"],
+            "stock_price": p["stock_price"],
+            "at": p.get("bought_at"),
+            "profit_loss": None,
+        }
+        for p in cursor
+    ]
 
 
 def get_user_portfolio(username: str) -> list[dict]:
