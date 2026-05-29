@@ -35,6 +35,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 def _migrate_to_bcrypt(username: str, password: str) -> None:
     """Re-hash a verified password with bcrypt and persist."""
+    username = username.strip().lower()
     users = _get_collection("users")
     users.update_one(
         {"username": username},
@@ -44,6 +45,7 @@ def _migrate_to_bcrypt(username: str, password: str) -> None:
 
 def create_user(username: str, password: str) -> tuple[bool, str]:
     """Create a new user in MongoDB."""
+    username = username.strip().lower()
     users = _get_collection("users")
 
     if users.find_one({"username": username}):
@@ -56,6 +58,7 @@ def create_user(username: str, password: str) -> tuple[bool, str]:
 
 def verify_user(username: str, password: str) -> tuple[bool, str]:
     """Verify user credentials in MongoDB."""
+    username = username.strip().lower()
     users = _get_collection("users")
 
     user_doc = users.find_one({"username": username})
@@ -85,6 +88,7 @@ def create_wallet(username: str, initial_funds: float = 10000) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    username = username.strip().lower()
     wallets = _get_collection("user_wallets")
 
     if wallets.find_one({"username": username}):
@@ -103,6 +107,7 @@ def get_wallet_balance(username: str) -> float | None:
     Returns:
         Current funds or None if user not found
     """
+    username = username.strip().lower()
     wallets = _get_collection("user_wallets")
 
     wallet_doc = wallets.find_one({"username": username})
@@ -116,6 +121,7 @@ def update_wallet_balance(username: str, new_balance: float) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    username = username.strip().lower()
     wallets = _get_collection("user_wallets")
 
     result = wallets.update_one(
@@ -138,6 +144,7 @@ def add_stock_to_portfolio(
     Returns:
         True if successful, False otherwise
     """
+    username = username.strip().lower()
     portfolio = _get_collection("user_portfolio")
 
     portfolio.insert_one(
@@ -159,6 +166,7 @@ def get_user_portfolio(username: str) -> list[dict]:
     Returns:
         List of dictionaries with stock info
     """
+    username = username.strip().lower()
     portfolio = _get_collection("user_portfolio")
 
     cursor = portfolio.find({"username": username}).sort("bought_at", -1)
@@ -166,12 +174,16 @@ def get_user_portfolio(username: str) -> list[dict]:
 
 
 def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -> bool:
-    """
-    Remove shares using FIFO logic (oldest purchases first) in MongoDB.
+    """Remove shares using FIFO logic (oldest purchases first) in MongoDB.
+
+    NOTE: This function is not race-safe. Two concurrent sells may both pass
+    the total_available check. Acceptable for a single-user simulator;
+    requires a MongoDB transaction or atomic compare-and-swap for production.
 
     Returns:
         True if successful, False if not enough shares.
     """
+    username = username.strip().lower()
     portfolio = _get_collection("user_portfolio")
 
     # Get all purchases for this user + ticker ordered by oldest first
@@ -211,6 +223,7 @@ def remove_from_portfolio(username: str, ticker: str, quantity_to_remove: int) -
 
 
 def calculate_net_worth(username: str) -> float:
+    username = username.strip().lower()
     wallet_funds = get_wallet_balance(username)
     if wallet_funds is None:
         wallet_funds = 0.0
@@ -231,19 +244,48 @@ def calculate_net_worth(username: str) -> float:
 
 def get_all_users_net_worth() -> list[dict]:
     users = _get_collection("users")
+    wallets = _get_collection("user_wallets")
+    portfolios = _get_collection("user_portfolio")
 
-    all_users = list(users.find())
-    net_worth_list = []
-    for user in all_users:
+    user_docs = list(users.find())
+    # Collect all unique tickers
+    all_portfolio_docs = list(portfolios.find())
+    unique_tickers = {doc["stock_ticker"] for doc in all_portfolio_docs}
+
+    # Fetch prices once per unique ticker (with error tolerance)
+    price_map = {}
+    for ticker in unique_tickers:
+        try:
+            price_map[ticker] = get_current_stock_price(ticker)
+        except Exception:
+            price_map[ticker] = 0.0
+
+    # Build wallet map
+    wallet_map = {
+        w["username"]: w.get("current_funds", 0.0)
+        for w in wallets.find()
+    }
+
+    # Group portfolio by username
+    portfolio_by_user: dict[str, list[dict]] = {}
+    for doc in all_portfolio_docs:
+        portfolio_by_user.setdefault(doc["username"], []).append(doc)
+
+    result = []
+    for user in user_docs:
         username = user["username"]
-        net_worth = calculate_net_worth(username)
-        net_worth_list.append({"username": username, "net_worth": net_worth})
-
-    return net_worth_list
+        wallet_funds = wallet_map.get(username, 0.0)
+        stock_value = sum(
+            price_map.get(doc["stock_ticker"], 0.0) * doc["stock_quantity"]
+            for doc in portfolio_by_user.get(username, [])
+        )
+        result.append({"username": username, "net_worth": stock_value + wallet_funds})
+    return result
 
 
 def get_aggregated_portfolio(username: str) -> dict[str, dict]:
     """Get portfolio grouped by ticker with summed quantities and average price."""
+    username = username.strip().lower()
     raw = get_user_portfolio(username)
     agg: dict[str, dict] = {}
     for stock in raw:

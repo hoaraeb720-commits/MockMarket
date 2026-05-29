@@ -58,6 +58,24 @@ def load_stock_data(tickers: list, period: str) -> pd.DataFrame:
     return _call_with_retry(_fetch)
 
 
+def download_history(ticker: str, start, end) -> pd.DataFrame:
+    """Download daily OHLCV with retry on rate limit.
+
+    Returns the raw DataFrame from yf.download. May be empty if no data.
+    """
+    def _fetch():
+        return yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
+    return _call_with_retry(_fetch)
+
+
+def download_history_years(ticker: str, years: int = 2) -> pd.DataFrame:
+    """Download last N years of daily OHLCV with retry on rate limit."""
+    from datetime import datetime, timedelta
+    end = datetime.today()
+    start = end - timedelta(days=365 * years)
+    return download_history(ticker, start, end)
+
+
 @st.cache_data(ttl=300)
 def get_current_stock_price(ticker: str) -> float:
     """Get the current stock price for a given ticker with retry on rate limit."""

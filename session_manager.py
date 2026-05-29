@@ -40,7 +40,6 @@ def create_session(username: str) -> str:
         "token": token,
         "username": username,
         "created_at": datetime.now(),
-        "wallet_balance": 10000,
     })
     
     return token
