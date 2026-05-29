@@ -156,7 +156,43 @@ def add_stock_to_portfolio(
             "bought_at": datetime.now(),
         }
     )
+    log_transaction(username, "BUY", stock_ticker, stock_quantity, stock_price)
     return True
+
+
+def log_transaction(
+    username: str,
+    kind: str,
+    ticker: str,
+    quantity: int,
+    price: float,
+    profit_loss: float | None = None,
+) -> None:
+    """Append a buy/sell entry to the user's transaction history.
+
+    `kind` is "BUY" or "SELL". `profit_loss` is only meaningful for sells.
+    """
+    username = username.strip().lower()
+    txns = _get_collection("transactions")
+    txns.insert_one(
+        {
+            "username": username,
+            "kind": kind,
+            "stock_ticker": ticker,
+            "stock_quantity": quantity,
+            "stock_price": price,
+            "profit_loss": profit_loss,
+            "at": datetime.now(),
+        }
+    )
+
+
+def get_recent_transactions(username: str, limit: int = 8) -> list[dict]:
+    """Return the most recent transactions (buys + sells) for a user."""
+    username = username.strip().lower()
+    txns = _get_collection("transactions")
+    cursor = txns.find({"username": username}).sort("at", -1).limit(limit)
+    return list(cursor)
 
 
 def get_user_portfolio(username: str) -> list[dict]:

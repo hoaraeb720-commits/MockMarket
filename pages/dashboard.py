@@ -9,6 +9,7 @@ from database import (
     get_user_portfolio,
     get_aggregated_portfolio,
     calculate_net_worth,
+    get_recent_transactions,
 )
 from ticker import get_current_stock_price, load_stock_data
 from constants import INITIAL_BALANCE
@@ -579,15 +580,24 @@ def display_trading_section(tickers: list):
 }
 .txn-tag {
     display: inline-block;
-    background: rgba(0,200,5,0.08);
-    color: #00C805;
     font-family: 'Geist Mono', monospace;
     font-size: 0.65rem;
     padding: 0.12rem 0.45rem;
     border-radius: 4px;
-    border: 1px solid rgba(0,200,5,0.18);
     letter-spacing: 0.04em;
 }
+.txn-tag.buy {
+    background: rgba(0,200,5,0.08);
+    color: #00C805;
+    border: 1px solid rgba(0,200,5,0.18);
+}
+.txn-tag.sell {
+    background: rgba(255,80,80,0.08);
+    color: #ff5050;
+    border: 1px solid rgba(255,80,80,0.18);
+}
+.txn-pl.gain { color: #00C805; }
+.txn-pl.loss { color: #ff5050; }
 
 /* Sell button override (red) */
 div[data-testid="stButton"] > button.sell-btn,
@@ -721,42 +731,49 @@ div[data-testid="stButton"] > button[kind="primary"].sell-btn {
             ),
             unsafe_allow_html=True,
         )
-        if user_portfolio:
-            recent = sorted(
-                user_portfolio, key=lambda s: s.get("bought_at", ""), reverse=True
-            )[:6]
+        recent_txns = get_recent_transactions(username, limit=6)
 
-            def fmt_when(ts) -> str:
-                if not ts:
-                    return ""
-                try:
-                    dt = pd.to_datetime(ts)
-                    now = pd.Timestamp.now(tz=dt.tz if dt.tz else None)
-                    delta = now - dt
-                    secs = int(delta.total_seconds())
-                    if secs < 60:
-                        return "just now"
-                    if secs < 3600:
-                        return f"{secs // 60}m ago"
-                    if secs < 86400:
-                        return f"{secs // 3600}h ago"
-                    if secs < 604800:
-                        return f"{secs // 86400}d ago"
-                    return dt.strftime("%b %-d")
-                except Exception:
-                    return ""
+        def fmt_when(ts) -> str:
+            if not ts:
+                return ""
+            try:
+                dt = pd.to_datetime(ts)
+                now = pd.Timestamp.now(tz=dt.tz if dt.tz else None)
+                delta = now - dt
+                secs = int(delta.total_seconds())
+                if secs < 60:
+                    return "just now"
+                if secs < 3600:
+                    return f"{secs // 60}m ago"
+                if secs < 86400:
+                    return f"{secs // 3600}h ago"
+                if secs < 604800:
+                    return f"{secs // 86400}d ago"
+                return dt.strftime("%b %-d")
+            except Exception:
+                return ""
 
-            rows = "".join(
-                f'<div class="txn-row">'
-                f'<div class="txn-row-top">'
-                f'<span><span class="txn-tag">BUY</span>&nbsp;&nbsp;{stock["stock_ticker"]}</span>'
-                f'<span>{stock["stock_quantity"]} × ${stock["stock_price"]:.2f}</span>'
-                f"</div>"
-                f'<div class="txn-row-bot">{fmt_when(stock.get("bought_at"))}</div>'
-                f"</div>"
-                for stock in recent
-            )
-            st.markdown(rows, unsafe_allow_html=True)
+        if recent_txns:
+            rows_html = []
+            for txn in recent_txns:
+                kind = txn.get("kind", "BUY")
+                tag_cls = "buy" if kind == "BUY" else "sell"
+                pl = txn.get("profit_loss")
+                pl_part = ""
+                if kind == "SELL" and pl is not None:
+                    pl_cls = "gain" if pl >= 0 else "loss"
+                    sign = "+" if pl >= 0 else "-"
+                    pl_part = f' · <span class="txn-pl {pl_cls}">{sign}${abs(pl):.2f}</span>'
+                rows_html.append(
+                    '<div class="txn-row">'
+                    f'<div class="txn-row-top">'
+                    f'<span><span class="txn-tag {tag_cls}">{kind}</span>&nbsp;&nbsp;{txn["stock_ticker"]}</span>'
+                    f'<span>{txn["stock_quantity"]} × ${txn["stock_price"]:.2f}</span>'
+                    f"</div>"
+                    f'<div class="txn-row-bot">{fmt_when(txn.get("at"))}{pl_part}</div>'
+                    f"</div>"
+                )
+            st.markdown("".join(rows_html), unsafe_allow_html=True)
         else:
             st.markdown(
                 '<div class="trade-empty">'

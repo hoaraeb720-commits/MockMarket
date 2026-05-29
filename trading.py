@@ -6,6 +6,7 @@ from database import (
     add_stock_to_portfolio,
     get_user_portfolio,
     remove_from_portfolio,
+    log_transaction,
 )
 from ticker import get_current_stock_price
 
@@ -63,6 +64,10 @@ def execute_stock_sale(ticker: str, quantity: int) -> bool:
             save_wallet_balance()
             st.error("Could not complete sale: insufficient shares.")
             return False
+
+        log_transaction(
+            username, "SELL", ticker, quantity, current_price, profit_loss=profit_loss
+        )
 
         if profit_loss >= 0:
             st.success(
