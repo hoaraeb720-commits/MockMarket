@@ -101,7 +101,7 @@ def base_layout(title="", yaxis_title="", height=280):
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def load_data(ticker, start, end):
     raw = download_history(ticker, start, end)
     if raw.empty:

@@ -3,19 +3,24 @@ import wordninja
 from loguru import logger
 import streamlit as st
 
+
 @st.cache_resource
 def load_toxicity_model():
     return pipeline("text-classification", model="unitary/toxic-bert")
+
 
 @st.cache_resource
 def load_nsfw_model():
     return pipeline("text-classification", model="michellejieli/NSFW_text_classifier")
 
-toxicity = load_toxicity_model()
-nsfw = load_nsfw_model()
 
 def check_username(username: str) -> dict:
     logger.info(f"Checking username: {username}")
+    # Lazy-load models on first call so importing this module doesn't
+    # block on ~1GB of model weights.
+    toxicity = load_toxicity_model()
+    nsfw = load_nsfw_model()
+
     words = wordninja.split(username.lower())
     readable = " ".join(words)
 

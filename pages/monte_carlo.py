@@ -28,7 +28,7 @@ app_nav(active="monte_carlo")
 # ============================================================================
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(ticker: str, years: int = 2) -> pd.DataFrame:
     """Fetch historical stock data from Yahoo Finance."""
     df = download_history_years(ticker, years)
