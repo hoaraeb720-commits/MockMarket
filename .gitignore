@@ -207,3 +207,6 @@ marimo/_lsp/
 __marimo__/
 mockmarket.db
 .streamlit/secrets.toml
+.playwright-mcp
+.superpowers/
+docs/

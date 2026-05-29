@@ -11,6 +11,7 @@ from database import (
     calculate_net_worth,
 )
 from ticker import get_current_stock_price, load_stock_data
+from constants import INITIAL_BALANCE
 from trading import confirm_purchase_modal, confirm_sale_modal
 from styles import apply_theme, app_nav
 
@@ -77,7 +78,7 @@ def load_ohlc_data(ticker: str, period: str) -> pd.DataFrame:
 def initialize_session_state():
     """Initialize session state variables"""
     if "wallet_balance" not in st.session_state:
-        st.session_state.wallet_balance = 10000
+        st.session_state.wallet_balance = INITIAL_BALANCE
     if "session_token" not in st.session_state:
         st.session_state.session_token = None
     if "chart_type" not in st.session_state:
@@ -421,75 +422,349 @@ def display_comparison_chart(
 def display_trading_section(tickers: list):
     """Display stock trading interface."""
     st.markdown(
-        "## :material/trending_up: Trading\n\nBuy and manage your stock portfolio."
+        """
+<style>
+.trade-section { margin-top: 4rem; }
+.trade-eyebrow {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.7rem;
+    color: #555;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+.trade-headline {
+    font-family: 'Geist', sans-serif;
+    font-size: 1.7rem;
+    font-weight: 600;
+    color: #f2f2f2;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin-bottom: 0.4rem;
+}
+.trade-sub {
+    font-family: 'Geist', sans-serif;
+    font-size: 0.95rem;
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+/* ── Trading panels ── */
+.trade-grid > div {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+.trade-panel {
+    background: linear-gradient(180deg, #0a0a0a 0%, #060606 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 1.5rem 1.5rem 1.7rem;
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+}
+.trade-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1.4rem;
+}
+.trade-panel-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: rgba(0,200,5,0.08);
+    border: 1px solid rgba(0,200,5,0.16);
+    color: #00C805;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.trade-panel-icon.sell {
+    background: rgba(255,80,80,0.06);
+    border-color: rgba(255,80,80,0.16);
+    color: #ff5050;
+}
+.trade-panel-icon.neutral {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+    color: #888;
+}
+.trade-panel-title {
+    font-family: 'Geist', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f2f2f2;
+    letter-spacing: -0.01em;
+}
+
+/* Empty state */
+.trade-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex: 1;
+    color: #555;
+    font-size: 0.85rem;
+    padding: 1rem 0;
+    line-height: 1.5;
+}
+.trade-empty-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed rgba(255,255,255,0.08);
+    margin-bottom: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #444;
+}
+
+/* Holdings list */
+.holdings-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 0.8rem;
+    align-items: center;
+    padding: 0.7rem 0.2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.holdings-row:last-child { border-bottom: none; }
+.holdings-ticker {
+    font-family: 'Geist', sans-serif;
+    font-weight: 600;
+    color: #f2f2f2;
+    font-size: 0.9rem;
+}
+.holdings-qty {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    color: #888;
+}
+.holdings-avg {
+    font-family: 'Geist', sans-serif;
+    font-size: 0.88rem;
+    color: #00C805;
+    font-weight: 500;
+    text-align: right;
+}
+
+/* Recent txns */
+.txn-row {
+    padding: 0.7rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.txn-row:last-child { border-bottom: none; }
+.txn-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Geist', sans-serif;
+    font-size: 0.88rem;
+    color: #f2f2f2;
+    font-weight: 500;
+}
+.txn-row-bot {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.74rem;
+    color: #555;
+}
+.txn-tag {
+    display: inline-block;
+    background: rgba(0,200,5,0.08);
+    color: #00C805;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.65rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 4px;
+    border: 1px solid rgba(0,200,5,0.18);
+    letter-spacing: 0.04em;
+}
+
+/* Sell button override (red) */
+div[data-testid="stButton"] > button.sell-btn,
+div[data-testid="stButton"] > button[kind="primary"].sell-btn {
+    background: linear-gradient(180deg, #ff5050 0%, #d63030 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 24px rgba(255,80,80,0.22) !important;
+}
+</style>
+<div class="trade-section">
+  <div class="trade-eyebrow">— Order management</div>
+  <div class="trade-headline">Trade & manage your portfolio</div>
+  <div class="trade-sub">Buy or sell positions at live market prices.</div>
+</div>
+""",
+        unsafe_allow_html=True,
     )
 
     username = st.session_state.get("username")
     user_portfolio = get_user_portfolio(username)
     aggregated = get_aggregated_portfolio(username)
 
-    trading_col1, trading_col2, trading_col3, trading_col4 = st.columns([1, 1, 1, 1])
+    # ── Trading row: Buy, Sell, Holdings, Recent ─────────────────────────
+    buy_col, sell_col, hold_col, txn_col = st.columns([1, 1, 1, 1])
 
-    with trading_col1:
-        with st.container(border=True):
-            st.subheader("Buy Stocks")
-            if tickers:
-                stock_to_buy = st.selectbox("Select Stock to Buy", tickers)
-                quantity_to_buy = st.number_input(
-                    "Enter Quantity to Buy", min_value=1, step=1, value=1
-                )
-                if st.button("Buy", width="stretch"):
-                    confirm_purchase_modal(stock_to_buy, quantity_to_buy)
-            else:
-                st.info("Select stocks above to buy")
+    panel_head = (
+        '<div class="trade-panel-head">'
+        '<div class="trade-panel-icon{cls}">{icon}</div>'
+        '<div class="trade-panel-title">{title}</div>'
+        '</div>'
+    )
 
-    with trading_col2:
-        with st.container(border=True):
-            st.subheader("Sell Stocks")
-            if aggregated:
-                stock_to_sell = st.selectbox(
-                    "Select Stock to Sell", list(aggregated.keys())
-                )
-                max_quantity = aggregated[stock_to_sell]["quantity"]
-                quantity_to_sell = st.number_input(
-                    f"Enter Quantity to Sell (Max: {max_quantity})",
-                    min_value=1,
-                    max_value=max_quantity,
-                    step=1,
-                    value=1,
-                )
-                if st.button("Sell", width="stretch"):
-                    confirm_sale_modal(stock_to_sell, quantity_to_sell)
-            else:
-                st.info("You don't own any stocks to sell yet.")
+    # ── BUY ─────────────────────────────────────────────────────────────
+    with buy_col, st.container(border=True):
+        st.markdown(
+            panel_head.format(
+                cls="",
+                title="Buy shares",
+                icon='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+            ),
+            unsafe_allow_html=True,
+        )
+        if tickers:
+            stock_to_buy = st.selectbox("Stock", tickers, key="buy_ticker")
+            quantity_to_buy = st.number_input(
+                "Quantity", min_value=1, step=1, value=1, key="buy_qty"
+            )
+            if st.button(
+                "Buy at market", key="buy_btn", type="primary", width="stretch"
+            ):
+                confirm_purchase_modal(stock_to_buy, quantity_to_buy)
+        else:
+            st.markdown(
+                '<div class="trade-empty">'
+                '<div class="trade-empty-icon">'
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+                '</div>Pick stocks above<br>to start trading</div>',
+                unsafe_allow_html=True,
+            )
 
-    with trading_col3:
-        with st.container(border=True):
-            st.subheader("Your Portfolio")
-            if aggregated:
-                portfolio_data = [
-                    {
-                        "Ticker": t,
-                        "Quantity": info["quantity"],
-                        "Avg Price": f"${info['avg_price']:.2f}",
-                    }
-                    for t, info in aggregated.items()
-                ]
-                st.table(portfolio_data)
-            else:
-                st.info("Your portfolio is empty. Buy some stocks to see them here!")
+    # ── SELL ────────────────────────────────────────────────────────────
+    with sell_col, st.container(border=True):
+        st.markdown(
+            panel_head.format(
+                cls=" sell",
+                title="Sell shares",
+                icon='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+            ),
+            unsafe_allow_html=True,
+        )
+        if aggregated:
+            stock_to_sell = st.selectbox(
+                "Stock", list(aggregated.keys()), key="sell_ticker"
+            )
+            max_quantity = aggregated[stock_to_sell]["quantity"]
+            quantity_to_sell = st.number_input(
+                f"Quantity (max {max_quantity})",
+                min_value=1,
+                max_value=max_quantity,
+                step=1,
+                value=1,
+                key="sell_qty",
+            )
+            if st.button("Sell at market", key="sell_btn", width="stretch"):
+                confirm_sale_modal(stock_to_sell, quantity_to_sell)
+        else:
+            st.markdown(
+                '<div class="trade-empty">'
+                '<div class="trade-empty-icon">'
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>'
+                "</div>You don't own any<br>shares to sell yet</div>",
+                unsafe_allow_html=True,
+            )
 
-    with trading_col4:
-        with st.container(border=True):
-            st.subheader("Recent Transactions")
-            if user_portfolio:
-                for stock in user_portfolio:
-                    st.markdown(
-                        f"- Bought **{stock['stock_quantity']}** shares of "
-                        f"**{stock['stock_ticker']}** at **${stock['stock_price']:.2f}**"
-                    )
-            else:
-                st.info("No transactions yet. Buy some stocks to see them here!")
+    # ── HOLDINGS ────────────────────────────────────────────────────────
+    with hold_col, st.container(border=True):
+        st.markdown(
+            panel_head.format(
+                cls=" neutral",
+                title="Your holdings",
+                icon='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>',
+            ),
+            unsafe_allow_html=True,
+        )
+        if aggregated:
+            rows = "".join(
+                f'<div class="holdings-row">'
+                f'<div class="holdings-ticker">{t}</div>'
+                f'<div class="holdings-qty">{info["quantity"]} sh</div>'
+                f'<div class="holdings-avg">${info["avg_price"]:.2f}</div>'
+                f"</div>"
+                for t, info in aggregated.items()
+            )
+            st.markdown(rows, unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<div class="trade-empty">'
+                '<div class="trade-empty-icon">'
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>'
+                "</div>Your portfolio<br>is empty</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── RECENT TRANSACTIONS ─────────────────────────────────────────────
+    with txn_col, st.container(border=True):
+        st.markdown(
+            panel_head.format(
+                cls=" neutral",
+                title="Recent activity",
+                icon='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+            ),
+            unsafe_allow_html=True,
+        )
+        if user_portfolio:
+            recent = sorted(
+                user_portfolio, key=lambda s: s.get("bought_at", ""), reverse=True
+            )[:6]
+
+            def fmt_when(ts) -> str:
+                if not ts:
+                    return ""
+                try:
+                    dt = pd.to_datetime(ts)
+                    now = pd.Timestamp.now(tz=dt.tz if dt.tz else None)
+                    delta = now - dt
+                    secs = int(delta.total_seconds())
+                    if secs < 60:
+                        return "just now"
+                    if secs < 3600:
+                        return f"{secs // 60}m ago"
+                    if secs < 86400:
+                        return f"{secs // 3600}h ago"
+                    if secs < 604800:
+                        return f"{secs // 86400}d ago"
+                    return dt.strftime("%b %-d")
+                except Exception:
+                    return ""
+
+            rows = "".join(
+                f'<div class="txn-row">'
+                f'<div class="txn-row-top">'
+                f'<span><span class="txn-tag">BUY</span>&nbsp;&nbsp;{stock["stock_ticker"]}</span>'
+                f'<span>{stock["stock_quantity"]} × ${stock["stock_price"]:.2f}</span>'
+                f"</div>"
+                f'<div class="txn-row-bot">{fmt_when(stock.get("bought_at"))}</div>'
+                f"</div>"
+                for stock in recent
+            )
+            st.markdown(rows, unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<div class="trade-empty">'
+                '<div class="trade-empty-icon">'
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+                "</div>No transactions<br>yet</div>",
+                unsafe_allow_html=True,
+            )
 
 
 # ============================================================================

@@ -1,11 +1,9 @@
-from datetime import datetime, timedelta
-
 import streamlit as st
-import yfinance as yf
 import numpy as np
 import pandas as pd
 import altair as alt
 from auth_helper import require_login
+from ticker import download_history_years
 from styles import apply_theme, app_nav
 
 # Ensure user is logged in
@@ -33,9 +31,7 @@ app_nav(active="monte_carlo")
 @st.cache_data(show_spinner=False)
 def fetch_data(ticker: str, years: int = 2) -> pd.DataFrame:
     """Fetch historical stock data from Yahoo Finance."""
-    end = datetime.today()
-    start = end - timedelta(days=365 * years)
-    df = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=True)
+    df = download_history_years(ticker, years)
     if df.empty:
         return pd.DataFrame()
     df = df[["Close"]].dropna()
@@ -111,23 +107,15 @@ def build_simulation_chart(
         )
     )
 
-    # ── Sample simulation paths ───────────────────────────────────────────
+    # ── Sample simulation paths (vectorized) ──────────────────────────────
     n_show = min(show_paths, paths.shape[0])
     idx_show = np.linspace(0, paths.shape[0] - 1, n_show, dtype=int)
+    sample = paths[idx_show]  # shape (n_show, n_days + 1)
 
-    paths_list = []
-    for sim_idx in idx_show:
-        for day, price in enumerate(paths[sim_idx]):
-            paths_list.append(
-                {
-                    "Date": future_dates[day],
-                    "Price": price,
-                    "SimPath": sim_idx,
-                    "Type": "Simulation",
-                }
-            )
-
-    paths_df = pd.DataFrame(paths_list)
+    paths_df = pd.DataFrame(sample.T, columns=[f"sim_{i}" for i in idx_show])
+    paths_df["Date"] = future_dates
+    paths_df = paths_df.melt(id_vars="Date", var_name="SimPath", value_name="Price")
+    paths_df["Type"] = "Simulation"
 
     paths_chart = (
         alt.Chart(paths_df)

@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 import holidays
 import streamlit as st
 from prophet import Prophet
-import yfinance as yf
 from auth_helper import require_login
+from ticker import download_history
 from styles import apply_theme, app_nav
 
 # Ensure user is logged in
@@ -103,7 +103,7 @@ def base_layout(title="", yaxis_title="", height=280):
 # ─────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def load_data(ticker, start, end):
-    raw = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
+    raw = download_history(ticker, start, end)
     if raw.empty:
         return pd.DataFrame()
     if isinstance(raw.columns, pd.MultiIndex):
