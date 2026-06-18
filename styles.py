@@ -29,8 +29,15 @@ def logo_html(size: int = 28) -> str:
 def app_nav(active: str) -> None:
     """Render the top navigation bar for protected pages.
 
-    `active` is the slug of the current page: dashboard, leaderboard, predict, monte_carlo.
-    Sign-out is a query-param link (?signout=1) handled here.
+    Navigation uses st.page_link (client-side) so the WebSocket session — and
+    therefore the logged-in state in st.session_state — survives page changes.
+    The previous bar used raw <a href> links, which trigger a full-page reload,
+    start a brand-new Streamlit session, and wipe the session state, forcing a
+    relogin on every hop to Forecast/Monte Carlo/Leaderboard.
+
+    `active` is the url_path slug of the current page (dashboard / leaderboard /
+    predict / monte_carlo); it drives the green active-underline below. Sign-out
+    remains a query-param link (?signout=1) handled here.
     """
     import streamlit as st
     from auth_helper import clear_session_cookie
@@ -48,53 +55,45 @@ def app_nav(active: str) -> None:
         st.query_params.clear()
         st.switch_page("pages/landing.py")
 
-    items = [
-        ("dashboard", "Trade"),
-        ("leaderboard", "Leaderboard"),
-        ("predict", "Forecast"),
-        ("monte_carlo", "Monte Carlo"),
-    ]
-    links_html = "".join(
-        f'<a href="/{slug}" class="mm-app-nav-link{" is-active" if slug == active else ""}" target="_self">{label}</a>'
-        for slug, label in items
-    )
     username = st.session_state.get("username", "")
 
+    # Style hook: keyed st.container() renders a wrapper div with class
+    # `st-key-<key>`, which we target to make the bar and its st.page_link items
+    # look like the old hand-built HTML nav.
     st.markdown(
-        f"""
+        """
 <style>
-.mm-app-nav {{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1.4rem 0;
-    margin-bottom: 2rem;
+/* ── App nav bar ──────────────────────────────────── */
+.st-key-mm_app_nav {
     border-bottom: 1px solid rgba(255,255,255,0.05);
-    gap: 2rem;
-}}
-.mm-app-nav-left {{ display: flex; align-items: center; gap: 2.4rem; }}
-.mm-app-nav-right {{ display: flex; align-items: center; gap: 0.8rem; margin-left: auto; }}
-.mm-app-nav-links {{ display: flex; gap: 1.6rem; align-items: center; }}
-.mm-app-nav-link, .mm-app-nav-link:visited, .mm-app-nav-link:link {{
+    padding: 1.4rem 0 !important;
+    margin-bottom: 2rem;
+    width: 100% !important;
+}
+.st-key-mm_app_nav_left { gap: 1.6rem !important; align-items: center !important; }
+.st-key-mm_app_nav_right { gap: 0.8rem !important; align-items: center !important; }
+
+/* st.page_link rendered as flat text nav links */
+.st-key-mm_app_nav [data-testid="stPageLink"] { width: auto !important; }
+.st-key-mm_app_nav [data-testid="stPageLink"] a {
+    background: transparent !important;
+    padding: 0.4rem 0 !important;
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    min-height: 0 !important;
+}
+.st-key-mm_app_nav [data-testid="stPageLink"] a:hover { background: transparent !important; }
+.st-key-mm_app_nav [data-testid="stPageLink"] a p {
     color: #888 !important;
-    font-family: 'Geist', sans-serif;
-    font-size: 0.9rem;
-    font-weight: 500;
-    text-decoration: none !important;
+    font-family: 'Geist', sans-serif !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
     transition: color 0.15s;
-    padding: 0.4rem 0;
-    position: relative;
-}}
-.mm-app-nav-link:hover {{ color: #f2f2f2 !important; }}
-.mm-app-nav-link.is-active {{ color: #f2f2f2 !important; }}
-.mm-app-nav-link.is-active::after {{
-    content: '';
-    position: absolute;
-    left: 0; right: 0; bottom: -1.5rem;
-    height: 2px;
-    background: #00C805;
-}}
-.mm-app-nav-user {{
+}
+.st-key-mm_app_nav [data-testid="stPageLink"] a:hover p { color: #f2f2f2 !important; }
+
+/* User pill */
+.mm-app-nav-user {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -105,16 +104,20 @@ def app_nav(active: str) -> None:
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 100px;
     line-height: 1;
-}}
-.mm-app-nav-user .dot {{
+    white-space: nowrap;
+}
+.mm-app-nav-user .dot {
     width: 6px;
     height: 6px;
     background: #00C805;
     border-radius: 50%;
     box-shadow: 0 0 8px #00C805;
-}}
-.mm-app-nav-user strong {{ color: #f2f2f2; font-weight: 500; }}
-.mm-app-nav-signout, .mm-app-nav-signout:visited, .mm-app-nav-signout:link {{
+}
+.mm-app-nav-user strong { color: #f2f2f2; font-weight: 500; }
+
+/* Sign out — a query-param link (it tears down the session on purpose,
+   so a full reload is fine here). */
+.mm-app-nav-signout, .mm-app-nav-signout:visited, .mm-app-nav-signout:link {
     color: #888 !important;
     font-family: 'Geist', sans-serif !important;
     font-size: 0.82rem !important;
@@ -125,33 +128,73 @@ def app_nav(active: str) -> None:
     background: rgba(255,255,255,0.03) !important;
     border-radius: 100px !important;
     line-height: 1 !important;
+    white-space: nowrap;
     transition: color 0.15s, border-color 0.15s, background 0.15s;
-}}
-.mm-app-nav-signout:hover {{
+}
+.mm-app-nav-signout:hover {
     color: #ff6060 !important;
     border-color: rgba(255,80,80,0.25) !important;
     background: rgba(255,80,80,0.06) !important;
     text-decoration: none !important;
-}}
+}
 </style>
-<div class="mm-app-nav">
-  <div class="mm-app-nav-left">
-    <a href="/dashboard" target="_self" style="text-decoration:none;color:inherit;">
-      <div class="mm-logo">
-        <div class="mm-logo-mark" style="width:28px;height:28px;">{LOGO_SVG}</div>
-        <div class="mm-logo-text">MockMarket</div>
-      </div>
-    </a>
-    <div class="mm-app-nav-links">{links_html}</div>
-  </div>
-  <div class="mm-app-nav-right">
-    <div class="mm-app-nav-user"><span class="dot"></span><span>Signed in as <strong>{username}</strong></span></div>
-    <a href="?signout=1" class="mm-app-nav-signout" target="_self">Sign out</a>
-  </div>
-</div>
 """,
         unsafe_allow_html=True,
     )
+
+    # Active-page underline. st.page_link only marks the current link with an
+    # unstable hashed Emotion class, so instead we match on the stable href,
+    # which equals the page's url_path (== the `active` slug callers pass).
+    if active:
+        st.markdown(
+            f"""
+<style>
+.st-key-mm_app_nav [data-testid="stPageLink"] a[href$="{active}"] {{
+    border-bottom-color: #00C805 !important;
+}}
+.st-key-mm_app_nav [data-testid="stPageLink"] a[href$="{active}"] p {{
+    color: #f2f2f2 !important;
+}}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+
+    with st.container(
+        key="mm_app_nav",
+        horizontal=True,
+        vertical_alignment="center",
+        horizontal_alignment="distribute",
+    ):
+        with st.container(
+            key="mm_app_nav_left", horizontal=True, vertical_alignment="center"
+        ):
+            st.markdown(
+                f'<div class="mm-logo">'
+                f'<div class="mm-logo-mark" style="width:28px;height:28px;">{LOGO_SVG}</div>'
+                f'<div class="mm-logo-text">MockMarket</div></div>',
+                unsafe_allow_html=True,
+            )
+            # Client-side links: st.page_link navigates without a full reload,
+            # so the WebSocket session — and the logged-in state in
+            # st.session_state — survives the hop (the original relogin bug).
+            st.page_link("pages/dashboard.py", label="Trade")
+            st.page_link("pages/leaderboard.py", label="Leaderboard")
+            st.page_link("pages/predict.py", label="Forecast")
+            st.page_link("pages/monte_carlo.py", label="Monte Carlo")
+
+        with st.container(
+            key="mm_app_nav_right", horizontal=True, vertical_alignment="center"
+        ):
+            st.markdown(
+                f'<div class="mm-app-nav-user"><span class="dot"></span>'
+                f'<span>Signed in as <strong>{username}</strong></span></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                '<a href="?signout=1" class="mm-app-nav-signout" target="_self">Sign out</a>',
+                unsafe_allow_html=True,
+            )
 
 
 
